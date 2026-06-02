@@ -11,7 +11,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: zenboard
     ports:
-      - "5433:5432" # Ánh xạ cổng 5433 ở máy host vào cổng 5432 của container (để tương thích với local config nếu truy cập ngoài)
+      - "127.0.0.1:5433:5432" # Chỉ cho truy cập database từ nội bộ VPS (localhost) trên cổng 5433 để tăng bảo mật và tránh trùng cổng ngoài
     volumes:
       - pgdata:/var/lib/postgresql/data
 
@@ -31,8 +31,7 @@ services:
       PGPASSWORD: postgres
       PGDATABASE: zenboard
       PORT: 3001
-    ports:
-      - "3001:3001"    # Expose cổng backend ra host nếu cần kiểm tra trực tiếp
+    # Bỏ phần ports ở host vì Nginx sẽ giao tiếp nội bộ trong mạng Docker của compose, tránh trùng cổng 3001 ở host
 
   # Dịch vụ Nginx Web Server (Frontend React + Reverse Proxy)
   frontend:
@@ -42,7 +41,7 @@ services:
     container_name: zenboard-frontend
     restart: always
     ports:
-      - "80:80"        # Mở cổng HTTP 80 ra ngoài internet để truy cập ứng dụng
+      - "8085:80"        # Thay đổi từ 80:80 sang 8085:80 để tránh trùng cổng 80 của các web server khác trên VPS
     depends_on:
       - backend
 

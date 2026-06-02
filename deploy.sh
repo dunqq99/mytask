@@ -129,8 +129,8 @@ ssh $SSH_OPTS $VPS_USER@$VPS_IP "cd $TARGET_DIR && \
 if [ $? -eq 0 ]; then
     echo -e "\n${GREEN}===================================================${NC}"
     echo -e "${GREEN}🎉 CHÚC MỪNG! ZENBOARD ĐÃ ĐƯỢC TRIỂN KHAI THÀNH CÔNG!${NC}"
-    echo -e "${GREEN} - Truy cập trang quản trị tại: http://$VPS_IP${NC}"
-    echo -e "${GREEN} - Cổng Database PostgreSQL (ngoài): 5433${NC}"
+    echo -e "${GREEN} - Truy cập trang quản trị tại: http://$VPS_IP:8085${NC}"
+    echo -e "${GREEN} - Cổng Database PostgreSQL (nội bộ VPS): 5433${NC}"
     echo -e "${GREEN}===================================================${NC}"
 else
     echo -e "${RED}❌ Khởi chạy Docker Compose trên VPS thất bại! Vui lòng SSH vào VPS để kiểm tra log chi tiết.${NC}"
