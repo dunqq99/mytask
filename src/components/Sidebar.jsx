@@ -252,7 +252,9 @@ export default function Sidebar({
   // Get Root Categories
   const rootCategories = categories.filter(c => !c.parentId);
   const isDashboard = activeTab === 'dashboard';
-    return (
+  const isPlanner = activeTab === 'planner';
+
+  return (
     <aside className={`sidebar-container ${isCollapsed ? 'collapsed' : ''}`} style={{ overflowY: 'hidden' }}>
       {/* Sidebar Header */}
       <div className="sidebar-header">
