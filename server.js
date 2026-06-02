@@ -170,6 +170,37 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
         // Bỏ qua nếu cấu hình này đã có sẵn
       }
 
+      // Tự động tạo tài khoản mặc định massie123 và di chuyển dữ liệu cũ nếu chưa tồn tại
+      try {
+        const usernamePreset = 'massie123';
+        const passwordPreset = '111qqqQQ';
+        const userRes = await client.query('SELECT id FROM users WHERE username = $1', [usernamePreset]);
+        if (userRes.rowCount === 0) {
+          console.log(`[Database Init] Tự động tạo tài khoản mặc định "${usernamePreset}"...`);
+          const userId = `usr-massie123`;
+          const passwordHash = hashPassword(passwordPreset);
+          
+          await client.query('BEGIN');
+          // Thêm người dùng
+          await client.query('INSERT INTO users (id, username, password) VALUES ($1, $2, $3)', [
+            userId, usernamePreset, passwordHash
+          ]);
+          
+          // Di chuyển toàn bộ dữ liệu cũ gán cho massie123
+          console.log(`[Migration] Di chuyển toàn bộ dữ liệu cũ (user_id IS NULL) gán cho user_id = ${userId}`);
+          await client.query(`UPDATE categories SET user_id = $1 WHERE user_id IS NULL`, [userId]);
+          await client.query(`UPDATE columns SET user_id = $1 WHERE user_id IS NULL`, [userId]);
+          await client.query(`UPDATE cards SET user_id = $1 WHERE user_id IS NULL`, [userId]);
+          await client.query(`UPDATE settings SET user_id = $1 WHERE user_id = 'default' OR user_id IS NULL`, [userId]);
+          
+          await client.query('COMMIT');
+          console.log(`[Database Init] Đã khởi tạo tài khoản và di chuyển dữ liệu thành công cho "${usernamePreset}"!`);
+        }
+      } catch (initErr) {
+        console.error('[Database Init Error] Không thể tự động tạo tài khoản mặc định:', initErr.message);
+        try { await client.query('ROLLBACK'); } catch (e) {}
+      }
+
       console.log('[PostgreSQL] Đã khởi tạo cấu trúc bảng dữ liệu thành công!');
       client.release();
       return; // Thành công, thoát khỏi hàm
