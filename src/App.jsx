@@ -24,6 +24,7 @@ import Dashboard from './components/Dashboard';
 import CardModal from './components/CardModal';
 import Sidebar from './components/Sidebar';
 import Planner from './components/Planner';
+import LoginRegister from './components/LoginRegister';
 
 // Available tag list for reference
 const AVAILABLE_TAGS = [
@@ -200,6 +201,31 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || (
 );
 
 export default function App() {
+  // Auth states
+  const [token, setToken] = useState(() => localStorage.getItem('zenboard_token') || '');
+  const [username, setUsername] = useState(() => localStorage.getItem('zenboard_username') || '');
+
+  const handleAuthSuccess = (newToken, newUsername) => {
+    localStorage.setItem('zenboard_token', newToken);
+    localStorage.setItem('zenboard_username', newUsername);
+    setToken(newToken);
+    setUsername(newUsername);
+    setIsInitialLoaded(false); // Trigger database load
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('zenboard_token');
+    localStorage.removeItem('zenboard_username');
+    setToken('');
+    setUsername('');
+    // Reset core states to default
+    setCategories(INITIAL_CATEGORIES);
+    setColumns(ensureCompletedColumnAtEnd(INITIAL_COLUMNS, 'col-4'));
+    setPartnerColumns(ensureCompletedColumnAtEnd(INITIAL_PARTNER_COLUMNS, 'part-col-4'));
+    setCards(INITIAL_CARDS);
+    setIsInitialLoaded(false);
+  };
+
   // Main states
   const [columns, setColumns] = useState(() => ensureCompletedColumnAtEnd(INITIAL_COLUMNS, 'col-4'));
   const [partnerColumns, setPartnerColumns] = useState(() => ensureCompletedColumnAtEnd(INITIAL_PARTNER_COLUMNS, 'part-col-4'));
@@ -375,9 +401,21 @@ export default function App() {
 
   // Tải dữ liệu ban đầu từ PostgreSQL Database
   useEffect(() => {
+    if (!token) {
+      setIsInitialLoaded(true);
+      return;
+    }
     const loadBoardFromDatabase = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/board`);
+        const response = await fetch(`${API_BASE_URL}/api/board`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        if (response.status === 401 || response.status === 403) {
+          handleLogout();
+          return;
+        }
         if (!response.ok) throw new Error('Không thể tải dữ liệu từ máy chủ API.');
         
         const data = await response.json();
@@ -405,7 +443,8 @@ export default function App() {
               await fetch(`${API_BASE_URL}/api/board/sync`, {
                 method: 'POST',
                 headers: {
-                  'Content-Type': 'application/json'
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({
                   categories: INITIAL_CATEGORIES,
@@ -439,13 +478,13 @@ export default function App() {
     };
     
     loadBoardFromDatabase();
-  }, []);
+  }, [token]);
 
   const backendSyncTimeoutRef = useRef(null);
 
   // Tự động đồng bộ sang PostgreSQL Database (Debounced 1.5 giây)
   useEffect(() => {
-    if (!isInitialLoaded) return;
+    if (!isInitialLoaded || !token) return;
 
     if (backendSyncTimeoutRef.current) {
       clearTimeout(backendSyncTimeoutRef.current);
@@ -471,11 +510,17 @@ export default function App() {
         const response = await fetch(`${API_BASE_URL}/api/board/sync`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify(payload)
         });
         
+        if (response.status === 401 || response.status === 403) {
+          handleLogout();
+          return;
+        }
+
         if (response.ok) {
           setIsBackendConnected(true);
           console.log('ZenBoard: Đã đồng bộ dữ liệu sang PostgreSQL.');
@@ -493,7 +538,7 @@ export default function App() {
         clearTimeout(backendSyncTimeoutRef.current);
       }
     };
-  }, [categories, columns, partnerColumns, cards, todaySchedule, workdayDuration, googleSheetUrl, googleSheetDisplayUrl, isAutoSyncEnabled, lastSyncTime, isInitialLoaded]);
+  }, [categories, columns, partnerColumns, cards, todaySchedule, workdayDuration, googleSheetUrl, googleSheetDisplayUrl, isAutoSyncEnabled, lastSyncTime, isInitialLoaded, token]);
 
   const partnerRootId = (() => {
     const partnerCat = categories.find(c => !c.parentId && c.name.includes('Đối tác'));
@@ -907,42 +952,19 @@ export default function App() {
     fileReader.readAsText(file);
     event.target.value = '';
   };
-  // Reset all data to INITIAL demo state
-  const handleResetData = async () => {
-    if (confirm('Bạn có chắc chắn muốn xóa toàn bộ dữ liệu hiện tại và khôi phục về bảng mẫu gốc không?')) {
-      try {
-        const payload = {
-          categories: INITIAL_CATEGORIES,
-          columns: ensureCompletedColumnAtEnd(INITIAL_COLUMNS, 'col-4'),
-          partnerColumns: ensureCompletedColumnAtEnd(INITIAL_PARTNER_COLUMNS, 'part-col-4'),
-          cards: INITIAL_CARDS,
-          settings: {
-            todaySchedule: [],
-            workdayDuration: 480,
-            googleSheetUrl: '',
-            googleSheetDisplayUrl: '',
-            isAutoSyncEnabled: false,
-            lastSyncTime: ''
-          }
-        };
-        await fetch(`${API_BASE_URL}/api/board/sync`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        // Clear local storage settings too just in case
-        localStorage.removeItem('zenboard_theme');
-        window.location.reload();
-      } catch (err) {
-        alert('Lỗi khi khôi phục dữ liệu mẫu: ' + err.message);
-      }
-    }
-  };
-
   const taskCategories = categories.filter(c => c.id !== partnerRootId && !checkIsCardPartner({ categoryId: c.id }));
   const partnerCategories = categories
     .filter(c => checkIsCardPartner({ categoryId: c.id }) && c.id !== partnerRootId)
     .map(c => c.parentId === partnerRootId ? { ...c, parentId: null } : c);
+
+  if (!token) {
+    return (
+      <LoginRegister 
+        API_BASE_URL={API_BASE_URL} 
+        onAuthSuccess={handleAuthSuccess} 
+      />
+    );
+  }
 
   return (
     <div className="app-container">
@@ -1101,14 +1123,6 @@ export default function App() {
           <button className="btn-icon" onClick={() => fileInputRef.current.click()} title="Nhập dữ liệu dự án (JSON)">
             <Upload size={16} />
           </button>
-          <button 
-            className="btn-icon" 
-            onClick={handleResetData} 
-            title="Khôi phục dữ liệu mẫu gốc"
-            style={{ color: 'var(--danger)', borderColor: 'var(--danger-light)' }}
-          >
-            <RotateCcw size={16} />
-          </button>
           <input
             type="file"
             ref={fileInputRef}
@@ -1149,6 +1163,8 @@ export default function App() {
           setPomodoroMode={setPomodoroMode}
           workdayDuration={workdayDuration}
           setWorkdayDuration={setWorkdayDuration}
+          username={username}
+          onLogout={handleLogout}
         />
 
         {/* Board / Dashboard Content Area */}

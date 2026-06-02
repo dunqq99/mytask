@@ -20,7 +20,8 @@ import {
   Brain,
   Timer,
   Activity,
-  Cloud
+  Cloud,
+  LogOut
 } from 'lucide-react';
 
 export default function Sidebar({
@@ -49,7 +50,9 @@ export default function Sidebar({
   pomodoroMode = 'work',
   setPomodoroMode,
   workdayDuration = 480,
-  setWorkdayDuration
+  setWorkdayDuration,
+  username = '',
+  onLogout
 }) {
   const [isAddingRoot, setIsAddingRoot] = useState(false);
   const [rootTitle, setRootTitle] = useState('');
@@ -249,10 +252,8 @@ export default function Sidebar({
   // Get Root Categories
   const rootCategories = categories.filter(c => !c.parentId);
   const isDashboard = activeTab === 'dashboard';
-  const isPlanner = activeTab === 'planner';
-
-  return (
-    <aside className={`sidebar-container ${isCollapsed ? 'collapsed' : ''}`}>
+    return (
+    <aside className={`sidebar-container ${isCollapsed ? 'collapsed' : ''}`} style={{ overflowY: 'hidden' }}>
       {/* Sidebar Header */}
       <div className="sidebar-header">
         <span className="sidebar-title">
@@ -266,329 +267,399 @@ export default function Sidebar({
         </span>
       </div>
 
-      {isDashboard ? (
-        /* Render Dashboard Navigation Options */
-        <div className="sidebar-section-list">
-          <div 
-            className={`sidebar-item ${dashboardSubTab === 'tasks' ? 'active' : ''}`}
-            onClick={() => setDashboardSubTab('tasks')}
-            style={{ cursor: 'pointer' }}
-          >
-            <div className="sidebar-item-content">
-              <Briefcase size={16} />
-              <span className="sidebar-item-text">Thống kê Công việc</span>
-            </div>
-          </div>
-
-          <div 
-            className={`sidebar-item ${dashboardSubTab === 'partners' ? 'active' : ''}`}
-            onClick={() => setDashboardSubTab('partners')}
-            style={{ cursor: 'pointer' }}
-          >
-            <div className="sidebar-item-content">
-              <Users size={16} />
-              <span className="sidebar-item-text">Báo cáo tình hình đối tác</span>
-            </div>
-          </div>
-
-          <div 
-            className={`sidebar-item ${dashboardSubTab === 'sheets' ? 'active' : ''}`}
-            onClick={() => setDashboardSubTab('sheets')}
-            style={{ cursor: 'pointer' }}
-          >
-            <div className="sidebar-item-content">
-              <Cloud size={16} />
-              <span className="sidebar-item-text">Đồng bộ Google Sheets</span>
-            </div>
-          </div>
-        </div>
-      ) : isPlanner ? (
-        /* Render Planner Navigation Options, Filters, and Pomodoro Timer */
-        <div className="sidebar-planner-wrapper" style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '16px 20px' }}>
-          
-          {/* Section 1: Schedule Views */}
-          <div className="sidebar-planner-section">
-            <span className="sidebar-section-title">GÓC NHÌN LỊCH TRÌNH 📅</span>
-            <div className="sidebar-section-list" style={{ marginTop: '6px' }}>
-              <div 
-                className={`sidebar-item ${plannerScheduleView === 'day' ? 'active' : ''}`}
-                onClick={() => setPlannerScheduleView('day')}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="sidebar-item-content">
-                  <CalendarDays size={15} />
-                  <span className="sidebar-item-text">Kế hoạch Hôm nay</span>
-                </div>
-              </div>
-              <div 
-                className={`sidebar-item ${plannerScheduleView === 'week' ? 'active' : ''}`}
-                onClick={() => setPlannerScheduleView('week')}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="sidebar-item-content">
-                  <CalendarDays size={15} style={{ color: '#db2777' }} />
-                  <span className="sidebar-item-text">Kế hoạch Tuần này</span>
-                </div>
-              </div>
-              <div 
-                className={`sidebar-item ${plannerScheduleView === 'month' ? 'active' : ''}`}
-                onClick={() => setPlannerScheduleView('month')}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="sidebar-item-content">
-                  <CalendarDays size={15} style={{ color: '#a855f7' }} />
-                  <span className="sidebar-item-text">Hạn chót Tháng này</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Section 2: Backlog Filters */}
-          <div className="sidebar-planner-section">
-            <span className="sidebar-section-title">LỌC CÔNG VIỆC CHƯA LÀM 📋</span>
-            <div className="sidebar-section-list" style={{ marginTop: '6px' }}>
-              <div 
-                className={`sidebar-item ${plannerBacklogFilter === 'all' ? 'active' : ''}`}
-                onClick={() => setPlannerBacklogFilter('all')}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="sidebar-item-content">
-                  <Layers size={15} />
-                  <span className="sidebar-item-text">Tất cả việc tồn đọng</span>
-                </div>
-              </div>
-              <div 
-                className={`sidebar-item ${plannerBacklogFilter === 'urgent' ? 'active' : ''}`}
-                onClick={() => setPlannerBacklogFilter('urgent')}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="sidebar-item-content">
-                  <Activity size={15} style={{ color: '#ef4444' }} />
-                  <span className="sidebar-item-text">Khẩn cấp & Quá hạn</span>
-                </div>
-              </div>
-              <div 
-                className={`sidebar-item ${plannerBacklogFilter === 'no-due' ? 'active' : ''}`}
-                onClick={() => setPlannerBacklogFilter('no-due')}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="sidebar-item-content">
-                  <Timer size={15} style={{ color: '#0284c7' }} />
-                  <span className="sidebar-item-text">Chưa có hạn chót</span>
-                </div>
-              </div>
-              <div 
-                className={`sidebar-item ${plannerBacklogFilter === 'short' ? 'active' : ''}`}
-                onClick={() => setPlannerBacklogFilter('short')}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="sidebar-item-content">
-                  <Plus size={15} style={{ color: '#16a34a' }} />
-                  <span className="sidebar-item-text">Tác vụ ngắn (≤ 30 phút)</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Section 3: Productivity Settings */}
-          <div className="sidebar-planner-section glass-panel" style={{ padding: '10px', borderRadius: '8px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-glass)' }}>
-            <span className="sidebar-section-title">THIẾT LẬP NĂNG SUẤT ⚙️</span>
-            <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              
-              {/* Duration Slider */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-                  <span>Quỹ giờ làm việc:</span>
-                  <strong style={{ color: 'var(--text-primary)' }}>
-                    {Math.floor(workdayDuration / 60)}g {workdayDuration % 60 ? `${workdayDuration % 60}p` : ''}
-                  </strong>
-                </div>
-                <input
-                  type="range"
-                  min="240"
-                  max="720"
-                  step="30"
-                  value={workdayDuration}
-                  onChange={(e) => setWorkdayDuration(parseInt(e.target.value, 10))}
-                  style={{ width: '100%', accentColor: 'var(--primary)', cursor: 'pointer' }}
-                />
-              </div>
-
-              {/* Breaks Checkbox */}
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '11.5px', color: 'var(--text-secondary)', userSelect: 'none' }}>
-                <input
-                  type="checkbox"
-                  checked={autoInsertBreaks}
-                  onChange={(e) => setAutoInsertBreaks(e.target.checked)}
-                  style={{ accentColor: 'var(--primary)' }}
-                />
-                <span>Tự động chèn giờ giải lao</span>
-              </label>
-            </div>
-          </div>
-
-          {/* Section 4: Pomodoro Widget */}
-          <div className="sidebar-planner-section pomodoro-widget-container">
-            <span className="sidebar-section-title">ĐỒNG HỒ TẬP TRUNG (POMODORO) ⏱️</span>
-            <div className="pomodoro-timer-card">
-              <div className="pomodoro-time-display">
-                {(() => {
-                  const mins = Math.floor(pomodoroTimeLeft / 60);
-                  const secs = pomodoroTimeLeft % 60;
-                  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-                })()}
-              </div>
-              <div className="pomodoro-mode-badge" style={{
-                color: pomodoroMode === 'work' ? '#f43f5e' : '#10b981',
-                borderColor: pomodoroMode === 'work' ? '#f43f5e30' : '#10b98130',
-                backgroundColor: pomodoroMode === 'work' ? '#f43f5e10' : '#10b98110'
-              }}>
-                {pomodoroMode === 'work' ? 'Đang tập trung 🎯' : pomodoroMode === 'short' ? 'Giải lao ngắn ☕' : 'Giải lao dài 🧘'}
-              </div>
-
-              <div className="pomodoro-mode-toggles">
-                <button 
-                  className={`pomodoro-mode-btn ${pomodoroMode === 'work' ? 'active' : ''}`}
-                  onClick={() => {
-                    setPomodoroIsRunning(false);
-                    setPomodoroMode('work');
-                    setPomodoroTimeLeft(1500); // 25 min
-                  }}
-                >
-                  Pomo
-                </button>
-                <button 
-                  className={`pomodoro-mode-btn ${pomodoroMode === 'short' ? 'active' : ''}`}
-                  onClick={() => {
-                    setPomodoroIsRunning(false);
-                    setPomodoroMode('short');
-                    setPomodoroTimeLeft(300); // 5 min
-                  }}
-                >
-                  Ngắn
-                </button>
-                <button 
-                  className={`pomodoro-mode-btn ${pomodoroMode === 'long' ? 'active' : ''}`}
-                  onClick={() => {
-                    setPomodoroIsRunning(false);
-                    setPomodoroMode('long');
-                    setPomodoroTimeLeft(900); // 15 min
-                  }}
-                >
-                  Dài
-                </button>
-              </div>
-
-              <div className="pomodoro-controls">
-                <button 
-                  className={`pomodoro-ctrl-btn ${pomodoroIsRunning ? 'running' : 'paused'}`}
-                  onClick={() => setPomodoroIsRunning(!pomodoroIsRunning)}
-                >
-                  {pomodoroIsRunning ? <Pause size={12} /> : <Play size={12} />}
-                  <span>{pomodoroIsRunning ? 'Tạm dừng' : 'Bắt đầu'}</span>
-                </button>
-                <button 
-                  className="pomodoro-ctrl-btn reset"
-                  onClick={() => {
-                    setPomodoroIsRunning(false);
-                    if (pomodoroMode === 'work') setPomodoroTimeLeft(1500);
-                    else if (pomodoroMode === 'short') setPomodoroTimeLeft(300);
-                    else setPomodoroTimeLeft(900);
-                  }}
-                  title="Đặt lại"
-                >
-                  <RotateCcw size={12} />
-                </button>
-              </div>
-            </div>
-          </div>
-
-        </div>
-      ) : (
-        /* Render Normal Category Management Tree */
-        <>
-          {/* Main Views/Filters */}
+      <div className="sidebar-content" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+        {isDashboard ? (
+          /* Render Dashboard Navigation Options */
           <div className="sidebar-section-list">
-            {/* All tasks */}
             <div 
-              className={`sidebar-item ${activeCategoryId === 'all' ? 'active' : ''}`}
-              onClick={() => setActiveCategoryId('all')}
+              className={`sidebar-item ${dashboardSubTab === 'tasks' ? 'active' : ''}`}
+              onClick={() => setDashboardSubTab('tasks')}
+              style={{ cursor: 'pointer' }}
             >
               <div className="sidebar-item-content">
-                <Layers size={16} />
-                <span className="sidebar-item-text">{isPartnerBoard ? "Tất cả đối tác" : "Tất cả công việc"}</span>
+                <Briefcase size={16} />
+                <span className="sidebar-item-text">Thống kê Công việc</span>
               </div>
-              {taskCounts['all'] > 0 && (
-                <span className="sidebar-badge">{taskCounts['all']}</span>
-              )}
             </div>
 
-            {/* Uncategorized */}
             <div 
-              className={`sidebar-item ${activeCategoryId === 'uncategorized' ? 'active' : ''}`}
-              onClick={() => setActiveCategoryId('uncategorized')}
+              className={`sidebar-item ${dashboardSubTab === 'partners' ? 'active' : ''}`}
+              onClick={() => setDashboardSubTab('partners')}
+              style={{ cursor: 'pointer' }}
             >
               <div className="sidebar-item-content">
-                <Inbox size={16} />
-                <span className="sidebar-item-text">{isPartnerBoard ? "Đối tác tự do" : "Chưa phân loại"}</span>
+                <Users size={16} />
+                <span className="sidebar-item-text">Báo cáo tình hình đối tác</span>
               </div>
-              {taskCounts['uncategorized'] > 0 && (
-                <span className="sidebar-badge">{taskCounts['uncategorized']}</span>
-              )}
+            </div>
+
+            <div 
+              className={`sidebar-item ${dashboardSubTab === 'sheets' ? 'active' : ''}`}
+              onClick={() => setDashboardSubTab('sheets')}
+              style={{ cursor: 'pointer' }}
+            >
+              <div className="sidebar-item-content">
+                <Cloud size={16} />
+                <span className="sidebar-item-text">Đồng bộ Google Sheets</span>
+              </div>
             </div>
           </div>
+        ) : isPlanner ? (
+          /* Render Planner Navigation Options, Filters, and Pomodoro Timer */
+          <div className="sidebar-planner-wrapper" style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '16px 20px' }}>
+            
+            {/* Section 1: Schedule Views */}
+            <div className="sidebar-planner-section">
+              <span className="sidebar-section-title">GÓC NHÌN LỊCH TRÌNH 📅</span>
+              <div className="sidebar-section-list" style={{ marginTop: '6px' }}>
+                <div 
+                  className={`sidebar-item ${plannerScheduleView === 'day' ? 'active' : ''}`}
+                  onClick={() => setPlannerScheduleView('day')}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="sidebar-item-content">
+                    <CalendarDays size={15} />
+                    <span className="sidebar-item-text">Kế hoạch Hôm nay</span>
+                  </div>
+                </div>
+                <div 
+                  className={`sidebar-item ${plannerScheduleView === 'week' ? 'active' : ''}`}
+                  onClick={() => setPlannerScheduleView('week')}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="sidebar-item-content">
+                    <CalendarDays size={15} style={{ color: '#db2777' }} />
+                    <span className="sidebar-item-text">Kế hoạch Tuần này</span>
+                  </div>
+                </div>
+                <div 
+                  className={`sidebar-item ${plannerScheduleView === 'month' ? 'active' : ''}`}
+                  onClick={() => setPlannerScheduleView('month')}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="sidebar-item-content">
+                    <CalendarDays size={15} style={{ color: '#a855f7' }} />
+                    <span className="sidebar-item-text">Hạn chót Tháng này</span>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-          <div style={{ padding: '0 20px', margin: '4px 0' }}>
-            <hr style={{ border: 'none', borderTop: '1px solid var(--border-glass)' }} />
+            {/* Section 2: Backlog Filters */}
+            <div className="sidebar-planner-section">
+              <span className="sidebar-section-title">LỌC CÔNG VIỆC CHƯA LÀM 📋</span>
+              <div className="sidebar-section-list" style={{ marginTop: '6px' }}>
+                <div 
+                  className={`sidebar-item ${plannerBacklogFilter === 'all' ? 'active' : ''}`}
+                  onClick={() => setPlannerBacklogFilter('all')}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="sidebar-item-content">
+                    <Layers size={15} />
+                    <span className="sidebar-item-text">Tất cả việc tồn đọng</span>
+                  </div>
+                </div>
+                <div 
+                  className={`sidebar-item ${plannerBacklogFilter === 'urgent' ? 'active' : ''}`}
+                  onClick={() => setPlannerBacklogFilter('urgent')}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="sidebar-item-content">
+                    <Activity size={15} style={{ color: '#ef4444' }} />
+                    <span className="sidebar-item-text">Khẩn cấp & Quá hạn</span>
+                  </div>
+                </div>
+                <div 
+                  className={`sidebar-item ${plannerBacklogFilter === 'no-due' ? 'active' : ''}`}
+                  onClick={() => setPlannerBacklogFilter('no-due')}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="sidebar-item-content">
+                    <Timer size={15} style={{ color: '#0284c7' }} />
+                    <span className="sidebar-item-text">Chưa có hạn chót</span>
+                  </div>
+                </div>
+                <div 
+                  className={`sidebar-item ${plannerBacklogFilter === 'short' ? 'active' : ''}`}
+                  onClick={() => setPlannerBacklogFilter('short')}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="sidebar-item-content">
+                    <Plus size={15} style={{ color: '#16a34a' }} />
+                    <span className="sidebar-item-text">Tác vụ ngắn (≤ 30 phút)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 3: Productivity Settings */}
+            <div className="sidebar-planner-section glass-panel" style={{ padding: '10px', borderRadius: '8px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-glass)' }}>
+              <span className="sidebar-section-title">THIẾT LẬP NĂNG SUẤT ⚙️</span>
+              <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                
+                {/* Duration Slider */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                    <span>Quỹ giờ làm việc:</span>
+                    <strong style={{ color: 'var(--text-primary)' }}>
+                      {Math.floor(workdayDuration / 60)}g {workdayDuration % 60 ? `${workdayDuration % 60}p` : ''}
+                    </strong>
+                  </div>
+                  <input
+                    type="range"
+                    min="240"
+                    max="720"
+                    step="30"
+                    value={workdayDuration}
+                    onChange={(e) => setWorkdayDuration(parseInt(e.target.value, 10))}
+                    style={{ width: '100%', accentColor: 'var(--primary)', cursor: 'pointer' }}
+                  />
+                </div>
+
+                {/* Breaks Checkbox */}
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '11.5px', color: 'var(--text-secondary)', userSelect: 'none' }}>
+                  <input
+                    type="checkbox"
+                    checked={autoInsertBreaks}
+                    onChange={(e) => setAutoInsertBreaks(e.target.checked)}
+                    style={{ accentColor: 'var(--primary)' }}
+                  />
+                  <span>Tự động chèn giờ giải lao</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Section 4: Pomodoro Widget */}
+            <div className="sidebar-planner-section pomodoro-widget-container">
+              <span className="sidebar-section-title">ĐỒNG HỒ TẬP TRUNG (POMODORO) ⏱️</span>
+              <div className="pomodoro-timer-card">
+                <div className="pomodoro-time-display">
+                  {(() => {
+                    const mins = Math.floor(pomodoroTimeLeft / 60);
+                    const secs = pomodoroTimeLeft % 60;
+                    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+                  })()}
+                </div>
+                <div className="pomodoro-mode-badge" style={{
+                  color: pomodoroMode === 'work' ? '#f43f5e' : '#10b981',
+                  borderColor: pomodoroMode === 'work' ? '#f43f5e30' : '#10b98130',
+                  backgroundColor: pomodoroMode === 'work' ? '#f43f5e10' : '#10b98110'
+                }}>
+                  {pomodoroMode === 'work' ? 'Đang tập trung 🎯' : pomodoroMode === 'short' ? 'Giải lao ngắn ☕' : 'Giải lao dài 🧘'}
+                </div>
+
+                <div className="pomodoro-mode-toggles">
+                  <button 
+                    className={`pomodoro-mode-btn ${pomodoroMode === 'work' ? 'active' : ''}`}
+                    onClick={() => {
+                      setPomodoroIsRunning(false);
+                      setPomodoroMode('work');
+                      setPomodoroTimeLeft(1500); // 25 min
+                    }}
+                  >
+                    Pomo
+                  </button>
+                  <button 
+                    className={`pomodoro-mode-btn ${pomodoroMode === 'short' ? 'active' : ''}`}
+                    onClick={() => {
+                      setPomodoroIsRunning(false);
+                      setPomodoroMode('short');
+                      setPomodoroTimeLeft(300); // 5 min
+                    }}
+                  >
+                    Ngắn
+                  </button>
+                  <button 
+                    className={`pomodoro-mode-btn ${pomodoroMode === 'long' ? 'active' : ''}`}
+                    onClick={() => {
+                      setPomodoroIsRunning(false);
+                      setPomodoroMode('long');
+                      setPomodoroTimeLeft(900); // 15 min
+                    }}
+                  >
+                    Dài
+                  </button>
+                </div>
+
+                <div className="pomodoro-controls">
+                  <button 
+                    className={`pomodoro-ctrl-btn ${pomodoroIsRunning ? 'running' : 'paused'}`}
+                    onClick={() => setPomodoroIsRunning(!pomodoroIsRunning)}
+                  >
+                    {pomodoroIsRunning ? <Pause size={12} /> : <Play size={12} />}
+                    <span>{pomodoroIsRunning ? 'Tạm dừng' : 'Bắt đầu'}</span>
+                  </button>
+                  <button 
+                    className="pomodoro-ctrl-btn reset"
+                    onClick={() => {
+                      setPomodoroIsRunning(false);
+                      if (pomodoroMode === 'work') setPomodoroTimeLeft(1500);
+                      else if (pomodoroMode === 'short') setPomodoroTimeLeft(300);
+                      else setPomodoroTimeLeft(900);
+                    }}
+                    title="Đặt lại"
+                  >
+                    <RotateCcw size={12} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
           </div>
+        ) : (
+          /* Render Normal Category Management Tree */
+          <>
+            {/* Main Views/Filters */}
+            <div className="sidebar-section-list">
+              {/* All tasks */}
+              <div 
+                className={`sidebar-item ${activeCategoryId === 'all' ? 'active' : ''}`}
+                onClick={() => setActiveCategoryId('all')}
+              >
+                <div className="sidebar-item-content">
+                  <Layers size={16} />
+                  <span className="sidebar-item-text">{isPartnerBoard ? "Tất cả đối tác" : "Tất cả công việc"}</span>
+                </div>
+                {taskCounts['all'] > 0 && (
+                  <span className="sidebar-badge">{taskCounts['all']}</span>
+                )}
+              </div>
 
-          {/* Category Tree Section */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 20px 6px 20px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              {isPartnerBoard ? "PHÂN LOẠI ĐỐI TÁC" : "DANH MỤC PHÂN CẤP"}
-            </span>
-            <button 
-              className="category-node-action-btn"
-              style={{ width: '22px', height: '22px', borderRadius: '4px' }}
-              onClick={() => setIsAddingRoot(!isAddingRoot)}
-              title="Thêm danh mục lớn"
-            >
-              <Plus size={14} />
-            </button>
-          </div>
+              {/* Uncategorized */}
+              <div 
+                className={`sidebar-item ${activeCategoryId === 'uncategorized' ? 'active' : ''}`}
+                onClick={() => setActiveCategoryId('uncategorized')}
+              >
+                <div className="sidebar-item-content">
+                  <Inbox size={16} />
+                  <span className="sidebar-item-text">{isPartnerBoard ? "Đối tác tự do" : "Chưa phân loại"}</span>
+                </div>
+                {taskCounts['uncategorized'] > 0 && (
+                  <span className="sidebar-badge">{taskCounts['uncategorized']}</span>
+                )}
+              </div>
+            </div>
 
-          {/* Root Addition Form */}
-          {isAddingRoot && (
-            <form onSubmit={handleAddRootSubmit} style={{ padding: '8px 20px', display: 'flex', gap: '6px' }}>
-              <input
-                type="text"
-                className="search-input"
-                style={{ padding: '6px 10px', fontSize: '13px' }}
-                placeholder="Tên danh mục..."
-                value={rootTitle}
-                onChange={(e) => setRootTitle(e.target.value)}
-                autoFocus
-                required
-              />
-              <button type="submit" className="btn btn-primary" style={{ padding: '6px 10px' }}>
+            <div style={{ padding: '0 20px', margin: '4px 0' }}>
+              <hr style={{ border: 'none', borderTop: '1px solid var(--border-glass)' }} />
+            </div>
+
+            {/* Category Tree Section */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 20px 6px 20px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                {isPartnerBoard ? "PHÂN LOẠI ĐỐI TÁC" : "DANH MỤC PHÂN CẤP"}
+              </span>
+              <button 
+                className="category-node-action-btn"
+                style={{ width: '22px', height: '22px', borderRadius: '4px' }}
+                onClick={() => setIsAddingRoot(!isAddingRoot)}
+                title="Thêm danh mục lớn"
+              >
                 <Plus size={14} />
               </button>
-            </form>
-          )}
+            </div>
 
-          {/* Categories Tree */}
-          <div className="category-tree-list">
-            {rootCategories.length > 0 ? (
-              rootCategories.map(cat => (
-                <CategoryNode key={cat.id} category={cat} level={0} />
-              ))
-            ) : (
-              <div style={{ padding: '16px 20px', fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center' }}>
-                Chưa có danh mục nào. Hãy bấm "+" để tạo!
-              </div>
+            {/* Root Addition Form */}
+            {isAddingRoot && (
+              <form onSubmit={handleAddRootSubmit} style={{ padding: '8px 20px', display: 'flex', gap: '6px' }}>
+                <input
+                  type="text"
+                  className="search-input"
+                  style={{ padding: '6px 10px', fontSize: '13px' }}
+                  placeholder="Tên danh mục..."
+                  value={rootTitle}
+                  onChange={(e) => setRootTitle(e.target.value)}
+                  autoFocus
+                  required
+                />
+                <button type="submit" className="btn btn-primary" style={{ padding: '6px 10px' }}>
+                  <Plus size={14} />
+                </button>
+              </form>
             )}
+
+            {/* Categories Tree */}
+            <div className="category-tree-list">
+              {rootCategories.length > 0 ? (
+                rootCategories.map(cat => (
+                  <CategoryNode key={cat.id} category={cat} level={0} />
+                ))
+              ) : (
+                <div style={{ padding: '16px 20px', fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center' }}>
+                  Chưa có danh mục nào. Hãy bấm "+" để tạo!
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* User Section at the bottom */}
+      {username && (
+        <div className="sidebar-user-section" style={{
+          padding: '12px 20px',
+          borderTop: '1px solid var(--border-glass)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          background: 'rgba(255, 255, 255, 0.02)',
+          backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+            <div style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%)',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: 'bold',
+              fontSize: '14px',
+              textTransform: 'uppercase',
+              flexShrink: 0
+            }}>
+              {username.charAt(0)}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{
+                fontSize: '13px',
+                fontWeight: '600',
+                color: 'var(--text-primary)',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}>
+                {username}
+              </div>
+              <div style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
+                Đang hoạt động
+              </div>
+            </div>
           </div>
-        </>
+          <button 
+            onClick={onLogout}
+            title="Đăng xuất"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--danger)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '6px',
+              borderRadius: '6px',
+              transition: 'background 0.2s',
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            <LogOut size={16} />
+          </button>
+        </div>
       )}
     </aside>
   );
