@@ -76,6 +76,14 @@ export default function CardModal({
   const [categoryId, setCategoryId] = useState('');
   const [estimatedDuration, setEstimatedDuration] = useState(0);
 
+  // Cấu hình danh sách dịch vụ cho đối tác
+  const [services, setServices] = useState([]);
+  const [isServiceFormOpen, setIsServiceFormOpen] = useState(false);
+  const [editingServiceId, setEditingServiceId] = useState(null);
+  const [serviceName, setServiceName] = useState('');
+  const [servicePrice, setServicePrice] = useState('');
+  const [serviceCustomFields, setServiceCustomFields] = useState([]);
+
   // Markdown Tab states
   const [descTab, setDescTab] = useState('edit'); // 'edit' or 'preview'
   const [copied, setCopied] = useState(false);
@@ -91,6 +99,7 @@ export default function CardModal({
       setTags(card.tags || []);
       setCategoryId(card.categoryId || '');
       setEstimatedDuration(card.estimatedDuration || 0);
+      setServices(card.services || []);
       setDescTab('edit'); // Reset to edit tab when card changes
 
       if (dialogRef.current && !dialogRef.current.open) {
@@ -173,6 +182,71 @@ export default function CardModal({
   const saveField = (field, value) => {
     if (!card) return;
     onUpdateCard(card.id, columnId, { ...card, [field]: value });
+  };
+
+  // Các hàm quản lý dịch vụ đối tác
+  const handleOpenAddService = () => {
+    setEditingServiceId(null);
+    setServiceName('');
+    setServicePrice('');
+    setServiceCustomFields([]);
+    setIsServiceFormOpen(true);
+  };
+
+  const handleOpenEditService = (srv) => {
+    setEditingServiceId(srv.id);
+    setServiceName(srv.name || '');
+    setServicePrice(srv.price || '');
+    setServiceCustomFields(srv.customFields || []);
+    setIsServiceFormOpen(true);
+  };
+
+  const handleAddCustomField = () => {
+    setServiceCustomFields(prev => [...prev, { key: '', value: '' }]);
+  };
+
+  const handleUpdateCustomField = (index, field, value) => {
+    setServiceCustomFields(prev => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  };
+
+  const handleRemoveCustomField = (index) => {
+    setServiceCustomFields(prev => prev.filter((_, idx) => idx !== index));
+  };
+
+  const handleSaveService = (e) => {
+    e.preventDefault();
+    if (!serviceName.trim()) return;
+
+    const cleanCustomFields = serviceCustomFields.filter(f => f.key.trim() !== '');
+
+    const serviceData = {
+      id: editingServiceId || `srv-${Date.now()}`,
+      name: serviceName.trim(),
+      price: parseFloat(servicePrice) || 0,
+      customFields: cleanCustomFields
+    };
+
+    let updatedServices;
+    if (editingServiceId) {
+      updatedServices = services.map(s => s.id === editingServiceId ? serviceData : s);
+    } else {
+      updatedServices = [...services, serviceData];
+    }
+
+    setServices(updatedServices);
+    saveField('services', updatedServices);
+    setIsServiceFormOpen(false);
+  };
+
+  const handleDeleteService = (srvId) => {
+    if (!window.confirm("Bạn có chắc chắn muốn xóa dịch vụ này không?")) return;
+    const updatedServices = services.filter(s => s.id !== srvId);
+    setServices(updatedServices);
+    saveField('services', updatedServices);
   };
 
   // Image Upload handler (Base64)
@@ -419,6 +493,211 @@ export default function CardModal({
                 </button>
               </form>
             </div>
+
+            {/* Quản lý Dịch vụ & Giá trị hợp tác (Chỉ dành cho Đối tác) */}
+            {isPartner && (
+              <div className="modal-services-section">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div className="modal-section-title" style={{ marginBottom: 0 }}>
+                    <Folder size={16} />
+                    <span>Quản lý Dịch vụ & Giá trị hợp tác</span>
+                  </div>
+                  
+                  {!isServiceFormOpen && (
+                    <button 
+                      type="button"
+                      className="btn btn-secondary" 
+                      style={{ padding: '6px 12px', fontSize: '12px' }}
+                      onClick={handleOpenAddService}
+                    >
+                      + Thêm dịch vụ
+                    </button>
+                  )}
+                </div>
+
+                {/* Form Thêm/Sửa Dịch vụ */}
+                {isServiceFormOpen && (
+                  <form onSubmit={handleSaveService} className="service-form-box">
+                    <h4 style={{ margin: '0 0 12px 0', fontSize: '13.5px', color: 'var(--primary)' }}>
+                      {editingServiceId ? 'Chỉnh sửa dịch vụ' : 'Thêm dịch vụ mới'}
+                    </h4>
+                    
+                    <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                      <div style={{ flex: 2, minWidth: '200px' }}>
+                        <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Tên dịch vụ</label>
+                        <input
+                          type="text"
+                          placeholder="Ví dụ: Thiết kế Website, Ads Facebook..."
+                          className="checklist-input"
+                          style={{ width: '100%', boxSizing: 'border-box' }}
+                          value={serviceName}
+                          onChange={(e) => setServiceName(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div style={{ flex: 1, minWidth: '120px' }}>
+                        <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Đơn giá (VND)</label>
+                        <input
+                          type="number"
+                          placeholder="Nhập giá..."
+                          className="checklist-input"
+                          style={{ width: '100%', boxSizing: 'border-box' }}
+                          value={servicePrice}
+                          onChange={(e) => setServicePrice(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Danh sách trường dữ liệu động (Custom Fields) */}
+                    <div style={{ marginBottom: '16px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <span style={{ fontSize: '11.5px', fontWeight: 'bold', color: 'var(--text-secondary)' }}>Các thông số lưu trữ động (Dynamic Fields)</span>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ padding: '2px 8px', fontSize: '10px' }}
+                          onClick={handleAddCustomField}
+                        >
+                          + Thêm thông số
+                        </button>
+                      </div>
+
+                      {serviceCustomFields.length === 0 ? (
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: '8px' }}>
+                          Chưa cấu hình thông số nào. Nhấn "+ Thêm thông số" để lưu trữ các thuộc tính riêng của dịch vụ.
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {serviceCustomFields.map((field, idx) => (
+                            <div key={idx} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                              <input
+                                type="text"
+                                placeholder="Tên thông số (Ví dụ: Số lượng, Thời hạn, Kênh...)"
+                                className="checklist-input"
+                                style={{ flex: 1, fontSize: '12px' }}
+                                value={field.key}
+                                onChange={(e) => handleUpdateCustomField(idx, 'key', e.target.value)}
+                                required
+                              />
+                              <input
+                                type="text"
+                                placeholder="Giá trị lưu trữ..."
+                                className="checklist-input"
+                                style={{ flex: 1, fontSize: '12px' }}
+                                value={field.value}
+                                onChange={(e) => handleUpdateCustomField(idx, 'value', e.target.value)}
+                              />
+                              <button
+                                type="button"
+                                className="delete-checklist-btn"
+                                style={{ padding: '4px' }}
+                                onClick={() => handleRemoveCustomField(idx)}
+                                title="Xóa thông số này"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                      <button 
+                        type="button" 
+                        className="btn btn-secondary" 
+                        style={{ padding: '6px 12px', fontSize: '12px' }}
+                        onClick={() => setIsServiceFormOpen(false)}
+                      >
+                        Hủy
+                      </button>
+                      <button 
+                        type="submit" 
+                        className="btn btn-primary" 
+                        style={{ padding: '6px 12px', fontSize: '12px' }}
+                      >
+                        Lưu dịch vụ
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {/* Danh sách Dịch vụ hiện có */}
+                {services.length === 0 ? (
+                  <div style={{ fontSize: '12.5px', color: 'var(--text-muted)', fontStyle: 'italic', padding: '8px 12px 0 12px' }}>
+                    Chưa khai báo loại dịch vụ nào cho đối tác này. Hãy nhấn nút "+ Thêm dịch vụ" ở trên để thiết lập.
+                  </div>
+                ) : (
+                  <div className="services-list-container" style={{ marginTop: '10px' }}>
+                    <table className="services-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+                      <thead>
+                        <tr style={{ textAlign: 'left' }}>
+                          <th style={{ padding: '8px 4px', color: 'var(--text-secondary)' }}>Tên dịch vụ</th>
+                          <th style={{ padding: '8px 4px', color: 'var(--text-secondary)' }}>Đơn giá</th>
+                          <th style={{ padding: '8px 4px', color: 'var(--text-secondary)' }}>Thông số lưu trữ</th>
+                          <th style={{ padding: '8px 4px', textAlign: 'center', color: 'var(--text-secondary)' }}>Hành động</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {services.map(srv => (
+                          <tr key={srv.id}>
+                            <td style={{ padding: '8px 4px', fontWeight: 'bold' }}>{srv.name}</td>
+                            <td style={{ padding: '8px 4px', color: 'var(--success)' }}>
+                              {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(srv.price)}
+                            </td>
+                            <td style={{ padding: '8px 4px' }}>
+                              {srv.customFields && srv.customFields.length > 0 ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                  {srv.customFields.map((f, i) => (
+                                    <div key={i} style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                      <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{f.key}</span>: {f.value}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '11px' }}>Không có thông số thêm</span>
+                              )}
+                            </td>
+                            <td style={{ padding: '8px 4px', textAlign: 'center' }}>
+                              <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center' }}>
+                                <button 
+                                  type="button"
+                                  className="btn btn-secondary" 
+                                  style={{ padding: '4px 8px', fontSize: '11px' }}
+                                  onClick={() => handleOpenEditService(srv)}
+                                >
+                                  Sửa
+                                </button>
+                                <button 
+                                  type="button"
+                                  className="delete-checklist-btn" 
+                                  style={{ padding: '4px' }}
+                                  onClick={() => handleDeleteService(srv.id)}
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+
+                    {/* Tổng chi phí dịch vụ */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px', paddingRight: '8px', fontSize: '13px' }}>
+                      <div>
+                        <span>Tổng chi phí dịch vụ: </span>
+                        <span style={{ fontWeight: 'bold', fontSize: '15px', color: 'var(--success)' }}>
+                          {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(
+                            services.reduce((sum, srv) => sum + srv.price, 0)
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Activity Logs Section */}
             <div className="activity-log-container">

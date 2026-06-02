@@ -2587,3 +2587,46 @@ dialog::backdrop {
   color: var(--text-muted);
 }
 
+/* Custom styles for Services & Pricing in CardModal */
+.modal-services-section {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--border-radius-lg);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+[data-theme="light"] .modal-services-section {
+  background: rgba(0, 0, 0, 0.015);
+}
+
+.service-form-box {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--border-radius-md);
+  padding: 12px;
+  margin-top: 10px;
+}
+
+[data-theme="light"] .service-form-box {
+  background: rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.services-table th {
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-glass);
+}
+
+.services-table td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+[data-theme="light"] .services-table td {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+}
+
+

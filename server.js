@@ -88,6 +88,9 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
       // Hỗ trợ lưu trữ ảnh bìa của thẻ công việc (Base64 string)
       await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS image TEXT`);
 
+      // Hỗ trợ lưu trữ thông tin dịch vụ của đối tác dưới dạng JSON string
+      await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS services TEXT`);
+
       // Bảng cấu hình chung
       await client.query(`CREATE TABLE IF NOT EXISTS settings (
         key VARCHAR(255) PRIMARY KEY,
@@ -159,7 +162,7 @@ app.get('/api/board', async (req, res) => {
     });
 
     // 3. Tải Cards
-    const cardRes = await client.query('SELECT id, title, description, tags, start_date AS "startDate", due_date AS "dueDate", estimated_duration AS "estimatedDuration", category_id AS "categoryId", checklist, activities, image FROM cards');
+    const cardRes = await client.query('SELECT id, title, description, tags, start_date AS "startDate", due_date AS "dueDate", estimated_duration AS "estimatedDuration", category_id AS "categoryId", checklist, activities, image, services FROM cards');
     data.cards = cardRes.rows.map(c => ({
       id: c.id,
       title: c.title,
@@ -171,7 +174,8 @@ app.get('/api/board', async (req, res) => {
       categoryId: c.categoryId || null,
       checklist: JSON.parse(c.checklist || '[]'),
       activities: JSON.parse(c.activities || '[]'),
-      image: c.image || null
+      image: c.image || null,
+      services: JSON.parse(c.services || '[]')
     }));
 
     // 4. Tải Settings
@@ -234,8 +238,8 @@ app.post('/api/board/sync', async (req, res) => {
     if (Array.isArray(cards) && cards.length > 0) {
       for (const c of cards) {
         await client.query(`INSERT INTO cards 
-          (id, title, description, tags, start_date, due_date, estimated_duration, category_id, checklist, activities, image) 
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`, [
+          (id, title, description, tags, start_date, due_date, estimated_duration, category_id, checklist, activities, image, services) 
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`, [
             c.id,
             c.title,
             c.description || '',
@@ -246,7 +250,8 @@ app.post('/api/board/sync', async (req, res) => {
             c.categoryId || null,
             JSON.stringify(c.checklist || []),
             JSON.stringify(c.activities || []),
-            c.image || null
+            c.image || null,
+            JSON.stringify(c.services || [])
           ]);
       }
     }

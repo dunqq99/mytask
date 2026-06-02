@@ -18,7 +18,7 @@ const TAG_COLORS = {
 };
 
 export default function Card({ card, columnId, columnColor, categories = [], onCardClick, onDragStart, onDragEnd, onDragOverCard }) {
-  const { id, title, description, tags = [], dueDate, startDate, checklist = [], image, categoryId, estimatedDuration } = card;
+  const { id, title, description, tags = [], dueDate, startDate, checklist = [], image, categoryId, estimatedDuration, services = [] } = card;
   
   // Find partner root category ID dynamically
   const partnerRootCat = categories.find(c => !c.parentId && c.name.includes('Đối tác'));
@@ -146,6 +146,31 @@ export default function Card({ card, columnId, columnColor, categories = [], onC
       {/* Description Preview */}
       {description && (
         <p className="card-desc-preview">{description}</p>
+      )}
+
+      {/* Hiển thị tổng giá trị hợp tác đối tác (nếu có dịch vụ) */}
+      {services && services.length > 0 && (
+        <div style={{ 
+          marginTop: '4px', 
+          marginBottom: '8px', 
+          display: 'inline-flex', 
+          alignItems: 'center', 
+          gap: '4px',
+          padding: '3px 8px',
+          background: 'rgba(16, 185, 129, 0.08)',
+          border: '1px solid rgba(16, 185, 129, 0.2)',
+          color: '#10b981',
+          borderRadius: '4px',
+          fontSize: '11px',
+          fontWeight: 'bold'
+        }}>
+          <span>💰 Hợp tác: </span>
+          <span>
+            {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(
+              services.reduce((sum, srv) => sum + srv.price, 0)
+            )}
+          </span>
+        </div>
       )}
 
       {/* Footer / Meta Info */}
