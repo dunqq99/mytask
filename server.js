@@ -20,90 +20,96 @@ const pgConfig = {
 
 let pool;
 
-// 1. Tự động kiểm tra và khởi tạo Database
-async function ensureDatabaseAndTables() {
-  // Kết nối database 'postgres' mặc định để kiểm tra/tạo database 'zenboard'
-  const adminClient = new Client({
-    ...pgConfig,
-    database: 'postgres'
-  });
-
-  try {
-    await adminClient.connect();
-    const targetDb = pgConfig.database;
-    const res = await adminClient.query("SELECT 1 FROM pg_database WHERE datname = $1", [targetDb]);
-    
-    if (res.rowCount === 0) {
-      console.log(`[PostgreSQL] Database "${targetDb}" chưa tồn tại. Đang tự động tạo...`);
-      await adminClient.query(`CREATE DATABASE ${targetDb}`);
-      console.log(`[PostgreSQL] Đã tạo database "${targetDb}" thành công!`);
-    } else {
-      console.log(`[PostgreSQL] Database "${targetDb}" đã có sẵn.`);
-    }
-  } catch (err) {
-    console.error('[PostgreSQL Setup Error] Không thể kiểm tra/tạo database:', err.message);
-    console.log('Lưu ý: Hãy chắc chắn PostgreSQL đang chạy tại localhost:5432 với username/password tương ứng.');
-  } finally {
+// 1. Tự động kiểm tra và khởi tạo Database với cơ chế thử lại (retry)
+async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
+  for (let i = 0; i < retries; i++) {
+    let adminClient;
     try {
+      console.log(`[PostgreSQL] Thử kết nối và khởi tạo database (Lần thử ${i + 1}/${retries})...`);
+      
+      // Kết nối database 'postgres' mặc định để kiểm tra/tạo database 'zenboard'
+      adminClient = new Client({
+        ...pgConfig,
+        database: 'postgres'
+      });
+
+      await adminClient.connect();
+      const targetDb = pgConfig.database;
+      const res = await adminClient.query("SELECT 1 FROM pg_database WHERE datname = $1", [targetDb]);
+      
+      if (res.rowCount === 0) {
+        console.log(`[PostgreSQL] Database "${targetDb}" chưa tồn tại. Đang tự động tạo...`);
+        await adminClient.query(`CREATE DATABASE ${targetDb}`);
+        console.log(`[PostgreSQL] Đã tạo database "${targetDb}" thành công!`);
+      } else {
+        console.log(`[PostgreSQL] Database "${targetDb}" đã có sẵn.`);
+      }
+      
       await adminClient.end();
-    } catch (e) {
-      // Bỏ qua nếu đã đóng
+
+      // Khởi tạo Connection Pool kết nối trực tiếp database 'zenboard'
+      pool = new Pool(pgConfig);
+      pool.on('error', (err, client) => {
+        console.error('[PostgreSQL Connection Pool Error] Idle client error:', err.message);
+      });
+      
+      const client = await pool.connect();
+      
+      // Bảng danh mục
+      await client.query(`CREATE TABLE IF NOT EXISTS categories (
+        id VARCHAR(50) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        parent_id VARCHAR(50)
+      )`);
+
+      // Bảng cột Kanban
+      await client.query(`CREATE TABLE IF NOT EXISTS columns (
+        id VARCHAR(50) PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        color VARCHAR(50),
+        card_ids TEXT, -- Lưu mảng ID dưới dạng JSON string để giữ thứ tự
+        is_partner INTEGER DEFAULT 0
+      )`);
+
+      // Bảng thẻ công việc
+      await client.query(`CREATE TABLE IF NOT EXISTS cards (
+        id VARCHAR(50) PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        tags TEXT, -- Lưu mảng tags dưới dạng JSON string
+        start_date VARCHAR(50),
+        due_date VARCHAR(50),
+        estimated_duration INTEGER DEFAULT 0,
+        category_id VARCHAR(50),
+        checklist TEXT, -- Lưu checklist dưới dạng JSON string
+        activities TEXT -- Lưu lịch sử hoạt động dưới dạng JSON string
+      )`);
+
+      // Hỗ trợ lưu trữ ảnh bìa của thẻ công việc (Base64 string)
+      await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS image TEXT`);
+
+      // Bảng cấu hình chung
+      await client.query(`CREATE TABLE IF NOT EXISTS settings (
+        key VARCHAR(255) PRIMARY KEY,
+        value TEXT
+      )`);
+
+      console.log('[PostgreSQL] Đã khởi tạo cấu trúc bảng dữ liệu thành công!');
+      client.release();
+      return; // Thành công, thoát khỏi hàm
+    } catch (err) {
+      if (adminClient) {
+        try { await adminClient.end(); } catch (e) {}
+      }
+      console.error(`[PostgreSQL Setup Warning] Thất bại ở lần thử ${i + 1}/${retries}:`, err.message);
+      if (i < retries - 1) {
+        console.log(`[PostgreSQL] Thử lại sau ${delayMs / 1000} giây...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      } else {
+        console.error('[PostgreSQL Setup Error] Đã thử hết số lần cho phép. Khởi tạo database thất bại!');
+        throw err;
+      }
     }
-  }
-
-  // Khởi tạo Connection Pool kết nối trực tiếp database 'zenboard'
-  pool = new Pool(pgConfig);
-  pool.on('error', (err, client) => {
-    console.error('[PostgreSQL Connection Pool Error] Idle client error:', err.message);
-  });
-  
-  // Tạo bảng (Schema)
-  try {
-    const client = await pool.connect();
-    
-    // Bảng danh mục
-    await client.query(`CREATE TABLE IF NOT EXISTS categories (
-      id VARCHAR(50) PRIMARY KEY,
-      name VARCHAR(255) NOT NULL,
-      parent_id VARCHAR(50)
-    )`);
-
-    // Bảng cột Kanban
-    await client.query(`CREATE TABLE IF NOT EXISTS columns (
-      id VARCHAR(50) PRIMARY KEY,
-      title VARCHAR(255) NOT NULL,
-      color VARCHAR(50),
-      card_ids TEXT, -- Lưu mảng ID dưới dạng JSON string để giữ thứ tự
-      is_partner INTEGER DEFAULT 0
-    )`);
-
-    // Bảng thẻ công việc
-    await client.query(`CREATE TABLE IF NOT EXISTS cards (
-      id VARCHAR(50) PRIMARY KEY,
-      title VARCHAR(255) NOT NULL,
-      description TEXT,
-      tags TEXT, -- Lưu mảng tags dưới dạng JSON string
-      start_date VARCHAR(50),
-      due_date VARCHAR(50),
-      estimated_duration INTEGER DEFAULT 0,
-      category_id VARCHAR(50),
-      checklist TEXT, -- Lưu checklist dưới dạng JSON string
-      activities TEXT -- Lưu lịch sử hoạt động dưới dạng JSON string
-    )`);
-
-    // Hỗ trợ lưu trữ ảnh bìa của thẻ công việc (Base64 string)
-    await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS image TEXT`);
-
-    // Bảng cấu hình chung
-    await client.query(`CREATE TABLE IF NOT EXISTS settings (
-      key VARCHAR(255) PRIMARY KEY,
-      value TEXT
-    )`);
-
-    console.log('[PostgreSQL] Đã khởi tạo cấu trúc bảng dữ liệu thành công!');
-    client.release();
-  } catch (err) {
-    console.error('[PostgreSQL Table Init Error] Không thể khởi tạo bảng:', err.message);
   }
 }
 
@@ -112,6 +118,9 @@ ensureDatabaseAndTables().then(() => {
   app.listen(PORT, () => {
     console.log(`Backend Server đang chạy tại http://localhost:${PORT}`);
   });
+}).catch(err => {
+  console.error('[Startup Error] Không thể khởi chạy server do lỗi kết nối cơ sở dữ liệu:', err.message);
+  process.exit(1);
 });
 
 // API Tải dữ liệu ban đầu
