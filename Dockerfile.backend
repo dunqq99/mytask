@@ -1,0 +1,18 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Sao chép package.json và package-lock.json để cài đặt dependencies trước
+COPY package.json package-lock.json ./
+
+# Cài đặt các thư viện cần thiết cho môi trường production
+RUN npm install --production
+
+# Sao chép file chạy server chính
+COPY server.js ./
+
+# Mở cổng chạy backend
+EXPOSE 3001
+
+# Chạy backend server
+CMD ["node", "server.js"]

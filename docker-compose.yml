@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  # Dịch vụ Cơ sở dữ liệu PostgreSQL
+  db:
+    image: postgres:14-alpine
+    container_name: zenboard-db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: zenboard
+    ports:
+      - "5433:5432" # Ánh xạ cổng 5433 ở máy host vào cổng 5432 của container (để tương thích với local config nếu truy cập ngoài)
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  # Dịch vụ Express Backend API
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: zenboard-backend
+    restart: always
+    depends_on:
+      - db
+    environment:
+      PGHOST: db       # Kết nối tới container db qua mạng nội bộ Docker
+      PGPORT: 5432     # Sử dụng cổng Postgres mặc định trong mạng Docker
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: zenboard
+      PORT: 3001
+    ports:
+      - "3001:3001"    # Expose cổng backend ra host nếu cần kiểm tra trực tiếp
+
+  # Dịch vụ Nginx Web Server (Frontend React + Reverse Proxy)
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: zenboard-frontend
+    restart: always
+    ports:
+      - "80:80"        # Mở cổng HTTP 80 ra ngoài internet để truy cập ứng dụng
+    depends_on:
+      - backend
+
+volumes:
+  pgdata: # Volume để lưu trữ dữ liệu PostgreSQL lâu dài không bị mất khi restart container

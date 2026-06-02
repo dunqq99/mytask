@@ -1,0 +1,391 @@
+========================================================================
+HƯỚNG DẪN THIẾT LẬP ĐỒNG BỘ ZENBOARD VỚI GOOGLE SHEETS
+========================================================================
+
+Hãy thực hiện các bước sau để kết nối ZenBoard của bạn với Google Sheets:
+
+Bước 1: Tạo một Google Sheet mới (hoặc sử dụng sheet hiện tại của bạn).
+Bước 2: Trong Google Sheet, click vào menu: "Tiện ích mở rộng" (Extensions) -> "Apps Script".
+Bước 3: Xóa toàn bộ mã mặc định trong file `Mã.gs` (nếu có) và dán đoạn mã bên dưới vào.
+Bước 4: Nhấn vào biểu tượng Save (hoặc nhấn Ctrl + S / Cmd + S) để lưu dự án.
+Bước 5: Click vào nút "Triển khai" (Deploy) ở góc trên bên phải -> "Triển khai mới" (New deployment).
+Bước 6: Chọn loại triển khai là "Ứng dụng web" (Web app) bằng cách click vào biểu tượng bánh răng ở mục "Chọn loại".
+Bước 7: Thiết lập các thông số sau:
+        - Mô tả: ZenBoard Sync
+        - Người thực thi (Execute as): "Tôi" (tài khoản email Google của bạn)
+        - Ai có quyền truy cập (Who has access): "Bất kỳ ai" (Anyone) - Điều này cực kỳ quan trọng để ZenBoard có thể gửi dữ liệu lên sheet của bạn mà không bị lỗi xác thực.
+Bước 8: Click "Triển khai" (Deploy). Một hộp thoại yêu cầu xác quyền truy cập có thể hiện lên -> chọn "Ủy quyền truy cập" (Authorize access) -> chọn tài khoản Google của bạn -> Chọn "Nâng cao" (Advanced) -> "Đi tới Dự án không có tiêu đề (không an toàn)" -> Nhấn "Cho phép" (Allow).
+Bước 9: Copy đường link URL Ứng dụng web (Web app URL) hiển thị ở cuối hộp thoại (dạng: https://script.google.com/macros/s/.../exec).
+Bước 10: Quay lại ZenBoard -> Vào tab "Báo cáo Thống kê" -> Chọn mục "Đồng bộ Google Sheets" ở thanh bên trái -> Dán link URL vừa copy vào và bật "Tự động đồng bộ Realtime".
+
+========================================================================
+MÃ NGUỒN GOOGLE APPS SCRIPT (SAO CHÉP ĐOẠN DƯỚI ĐÂY)
+========================================================================
+
+```javascript
+function doPost(e) {
+  try {
+    var data = JSON.parse(e.postData.contents);
+    var cards = data.cards || [];
+    var categories = data.categories || [];
+    var columns = data.columns || [];
+    
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    
+    // 1. Ánh xạ ID danh mục & Cột sang Tên
+    var catMap = {};
+    categories.forEach(function(cat) {
+      catMap[cat.id] = cat.name;
+    });
+    var colMap = {};
+    columns.forEach(function(col) {
+      colMap[col.id] = col.title;
+    });
+    
+    // 2. Ghi đè toàn bộ dữ liệu vào tab "Database" để phục vụ hàm QUERY
+    var dbSheet = ss.getSheetByName("Database");
+    if (!dbSheet) {
+      dbSheet = ss.insertSheet("Database");
+    } else {
+      dbSheet.clear();
+    }
+    
+    var dbHeaders = [
+      "Mã công việc", "Tên công việc", "Danh mục/Phòng ban", "Trạng thái", 
+      "Độ ưu tiên", "Thời lượng (phút)", "Ngày bắt đầu", "Hạn chót", 
+      "Mô tả", "Tuần thực hiện", "Thứ trong tuần"
+    ];
+    dbSheet.appendRow(dbHeaders);
+    
+    // Định dạng dòng tiêu đề Database (Sleek slate-blue style)
+    dbSheet.getRange(1, 1, 1, dbHeaders.length)
+           .setBackground("#1e293b")
+           .setFontColor("#ffffff")
+           .setFontWeight("bold")
+           .setHorizontalAlignment("center");
+           
+    var dbRows = [];
+    var weekGroups = {};
+    
+    cards.forEach(function(card) {
+      var dateStr = card.dueDate || card.startDate;
+      var weekName = "Chưa lên lịch";
+      var dayName = "Chưa rõ";
+      
+      if (dateStr) {
+        var dateParts = dateStr.split('-');
+        if (dateParts.length === 3) {
+          var d = new Date(parseInt(dateParts[0], 10), parseInt(dateParts[1], 10) - 1, parseInt(dateParts[2], 10));
+          weekName = "Tuần " + getISOWeekNumber(d);
+          dayName = getVietnameseDayOfWeek(d);
+        }
+      }
+      
+      var catName = catMap[card.categoryId] || "Chưa phân loại";
+      var statusTitle = colMap[card.columnId] || "Cần thực hiện";
+      
+      var priority = "Bình thường";
+      if (card.tags.indexOf("high") !== -1) priority = "Khẩn cấp";
+      else if (card.tags.indexOf("medium") !== -1) priority = "Quan trọng";
+      
+      dbRows.push([
+        card.id,
+        card.title,
+        catName,
+        statusTitle,
+        priority,
+        card.estimatedDuration || 0,
+        card.startDate || "",
+        card.dueDate || "",
+        card.description || "",
+        weekName,
+        dayName
+      ]);
+      
+      // Nhóm theo tuần
+      if (!weekGroups[weekName]) weekGroups[weekName] = [];
+      weekGroups[weekName].push(card);
+    });
+    
+    if (dbRows.length > 0) {
+      dbSheet.getRange(2, 1, dbRows.length, dbHeaders.length).setValues(dbRows);
+      dbSheet.getRange(2, 7, dbRows.length, 2).setNumberFormat("yyyy-MM-dd");
+    }
+    
+    // Tự động căn chỉnh độ rộng cột ở tab Database
+    for (var i = 1; i <= dbHeaders.length; i++) {
+      dbSheet.autoResizeColumn(i);
+    }
+    
+    // Viền nhạt cho Database
+    if (dbRows.length > 0) {
+      dbSheet.getRange(1, 1, dbRows.length + 1, dbHeaders.length)
+             .setBorder(true, true, true, true, true, true, "#e2e8f0", SpreadsheetApp.BorderStyle.SOLID);
+    }
+    
+    // 3. Tạo/Cập nhật tab "Báo cáo Tổng quan" (Interactive Dashboard)
+    var rSheet = ss.getSheetByName("Báo cáo Tổng quan");
+    var isNewReport = false;
+    if (!rSheet) {
+      rSheet = ss.insertSheet("Báo cáo Tổng quan", 0); // Ưu tiên xếp đầu tiên
+      isNewReport = true;
+    }
+    
+    if (isNewReport) {
+      // Thiết kế Layout
+      rSheet.getRange("A1").setValue("BÁO CÁO THỐNG KÊ CHI TIẾT ZENBOARD")
+            .setFontSize(16).setFontWeight("bold").setFontColor("#1e293b");
+      
+      rSheet.getRange("A3:B3").merge().setValue("BỘ LỌC BÁO CÁO")
+            .setFontWeight("bold").setBackground("#cbd5e1").setHorizontalAlignment("center");
+      
+      rSheet.getRange("A4").setValue("Chọn Tuần:");
+      rSheet.getRange("A5").setValue("Chọn Danh mục:");
+      
+      rSheet.getRange("B4").setValue("Tất cả");
+      rSheet.getRange("B5").setValue("Tất cả");
+      
+      // Khung KPI thống kê bằng hàm logic (Tự động format theo locale dấu phẩy / chấm phẩy)
+      rSheet.getRange("D4").setValue("TỔNG SỐ VIỆC");
+      rSheet.getRange("D5").setValue("ĐÃ HOÀN THÀNH");
+      rSheet.getRange("D6").setValue("TỔNG THỜI GIAN (GIỜ)");
+      
+      // Định dạng KPI
+      rSheet.getRange("D4:E6").setBorder(true, true, true, true, true, true, "#94a3b8", SpreadsheetApp.BorderStyle.SOLID);
+      rSheet.getRange("D4:D6").setBackground("#f1f5f9").setFontWeight("bold");
+      rSheet.getRange("E4:E6").setFontWeight("bold").setHorizontalAlignment("center");
+      
+      // Tiêu đề bảng báo cáo chi tiết
+      var tableHeaders = [
+        "Tên công việc", "Danh mục/Phòng ban", "Trạng thái", "Độ ưu tiên", 
+        "Thời lượng (phút)", "Ngày bắt đầu", "Hạn chót", "Thứ", "Mô tả"
+      ];
+      rSheet.getRange(8, 1, 1, tableHeaders.length).setValues([tableHeaders])
+            .setBackground("#334155")
+            .setFontColor("#ffffff")
+            .setFontWeight("bold")
+            .setHorizontalAlignment("center");
+    }
+    
+    // Ghi đè công thức (Luôn cập nhật để sửa lỗi cú pháp nếu có trên sheet cũ khi đồng bộ)
+    rSheet.getRange("E4").setFormula(getFormulaForLocale(
+      '=COUNTIFS(Database!J2:J, IF(B4="Tất cả", "<>", B4), Database!C2:C, IF(B5="Tất cả", "<>", B5))'
+    ));
+    rSheet.getRange("E5").setFormula(getFormulaForLocale(
+      '=COUNTIFS(Database!J2:J, IF(B4="Tất cả", "<>", B4), Database!C2:C, IF(B5="Tất cả", "<>", B5), Database!D2:D, "*Hoàn thành*")'
+    ));
+    rSheet.getRange("E6").setFormula(getFormulaForLocale(
+      '=SUMIFS(Database!F2:F, Database!J2:J, IF(B4="Tất cả", "<>", B4), Database!C2:C, IF(B5="Tất cả", "<>", B5))/60'
+    ));
+    
+    // Viết hàm logic QUERY để tự động lọc theo bộ lọc động (Sử dụng Col1, Col2 để tương thích mọi ngôn ngữ hiển thị)
+    rSheet.getRange("A9").setFormula(getFormulaForLocale(
+      '=IFERROR(QUERY(Database!B2:K, "SELECT Col1, Col2, Col3, Col4, Col5, Col6, Col7, Col10, Col8 WHERE Col1 IS NOT NULL " & IF(B4="Tất cả", "", "AND Col9 = \'"&B4&"\' ") & IF(B5="Tất cả", "", "AND Col2 = \'"&B5&"\' "), 0), "Không có công việc nào phù hợp")'
+    ));
+    
+    // Đảm bảo có giá trị mặc định cho ô lọc để tránh lỗi hàm
+    var b4Val = rSheet.getRange("B4").getValue();
+    if (!b4Val) rSheet.getRange("B4").setValue("Tất cả");
+    var b5Val = rSheet.getRange("B5").getValue();
+    if (!b5Val) rSheet.getRange("B5").setValue("Tất cả");
+    
+    // Cập nhật Dropdown Menu Validation tự động dựa trên danh sách ZenBoard thực tế
+    var weekList = ["Tất cả"];
+    var uniqueWeeks = {};
+    cards.forEach(function(card) {
+      var dateStr = card.dueDate || card.startDate;
+      if (dateStr) {
+        var dateParts = dateStr.split('-');
+        if (dateParts.length === 3) {
+          var d = new Date(parseInt(dateParts[0], 10), parseInt(dateParts[1], 10) - 1, parseInt(dateParts[2], 10));
+          uniqueWeeks["Tuần " + getISOWeekNumber(d)] = true;
+        }
+      }
+    });
+    Object.keys(uniqueWeeks).sort().forEach(function(w) {
+      weekList.push(w);
+    });
+    if (weekList.length === 1) weekList.push("Tuần 22", "Tuần 23"); // Fallback mẫu
+    
+    var weekRule = SpreadsheetApp.newDataValidation().requireValueInList(weekList, true).build();
+    rSheet.getRange("B4").setDataValidation(weekRule);
+    
+    var catList = ["Tất cả"];
+    categories.forEach(function(cat) {
+      catList.push(cat.name);
+    });
+    var catRule = SpreadsheetApp.newDataValidation().requireValueInList(catList, true).build();
+    rSheet.getRange("B5").setDataValidation(catRule);
+    
+    // Căn chỉnh độ rộng cột của bảng Báo cáo Tổng quan
+    for (var col = 1; col <= 9; col++) {
+      rSheet.autoResizeColumn(col);
+    }
+    
+    // Định dạng cột Ngày bắt đầu và Hạn chót trong Báo cáo Tổng quan
+    rSheet.getRange("F9:G").setNumberFormat("yyyy-MM-dd");
+    
+    // 4. Dọn dẹp các sheet tuần cũ hoặc không còn hoạt động để làm sạch dữ liệu
+    var activeWeeks = Object.keys(weekGroups);
+    var allSheets = ss.getSheets();
+    allSheets.forEach(function(sheet) {
+      var sheetName = sheet.getName();
+      if (sheetName.indexOf("Tuần ") === 0) {
+        var weekNum = parseInt(sheetName.replace("Tuần ", ""), 10);
+        if (!isNaN(weekNum)) {
+          // Tự động xóa các sheet tuần cũ trước Tuần 22 hoặc các sheet tuần không còn công việc nào trong payload đồng bộ hiện tại
+          if (weekNum < 22 || activeWeeks.indexOf(sheetName) === -1) {
+            try {
+              ss.deleteSheet(sheet);
+            } catch(e) {
+              // Bỏ qua nếu là sheet cuối cùng (Google Sheets không cho phép xóa sheet duy nhất)
+            }
+          }
+        }
+      }
+    });
+
+    // 5. Tạo các sheet theo tuần độc lập để xem riêng lẻ
+    activeWeeks.forEach(function(weekName) {
+      if (weekName === "Chưa lên lịch") return;
+      
+      var weekSheet = ss.getSheetByName(weekName);
+      if (!weekSheet) {
+        weekSheet = ss.insertSheet(weekName);
+      } else {
+        weekSheet.clear();
+      }
+      
+      var wHeaders = ["Tên công việc", "Danh mục/Phòng ban", "Trạng thái", "Độ ưu tiên", "Thời lượng (phút)", "Ngày bắt đầu", "Hạn chót", "Thứ", "Mô tả"];
+      weekSheet.appendRow(wHeaders);
+      
+      weekSheet.getRange(1, 1, 1, wHeaders.length)
+               .setBackground("#475569")
+               .setFontColor("#ffffff")
+               .setFontWeight("bold")
+               .setHorizontalAlignment("center");
+      
+      var wRows = [];
+      weekGroups[weekName].forEach(function(card) {
+        var dateStr = card.dueDate || card.startDate;
+        var dayName = "Chưa rõ";
+        if (dateStr) {
+          var dateParts = dateStr.split('-');
+          var d = new Date(parseInt(dateParts[0], 10), parseInt(dateParts[1], 10) - 1, parseInt(dateParts[2], 10));
+          dayName = getVietnameseDayOfWeek(d);
+        }
+        var catName = catMap[card.categoryId] || "Chưa phân loại";
+        var statusTitle = colMap[card.columnId] || "Cần thực hiện";
+        var priority = "Bình thường";
+        if (card.tags.indexOf("high") !== -1) priority = "Khẩn cấp";
+        else if (card.tags.indexOf("medium") !== -1) priority = "Quan trọng";
+        
+        wRows.push([
+          card.title,
+          catName,
+          statusTitle,
+          priority,
+          card.estimatedDuration || 0,
+          card.startDate || "",
+          card.dueDate || "",
+          dayName,
+          card.description || ""
+        ]);
+      });
+      
+      if (wRows.length > 0) {
+        weekSheet.getRange(2, 1, wRows.length, wHeaders.length).setValues(wRows);
+        weekSheet.getRange(2, 6, wRows.length, 2).setNumberFormat("yyyy-MM-dd");
+      }
+      
+      for (var c = 1; c <= wHeaders.length; c++) {
+        weekSheet.autoResizeColumn(c);
+      }
+      
+      // Vẽ viền cho bảng dữ liệu tuần
+      weekSheet.getRange(1, 1, wRows.length + 1, wHeaders.length)
+               .setBorder(true, true, true, true, true, true, "#cbd5e1", SpreadsheetApp.BorderStyle.SOLID);
+    });
+    
+    return ContentService.createTextOutput(JSON.stringify({ status: "success" }))
+                         .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() }))
+                         .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+// Hàm tự động phát hiện Locale và chuyển dấu phẩy sang chấm phẩy cho các nước châu Âu / Việt Nam
+function getFormulaForLocale(formula) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var locale = ss.getSpreadsheetLocale();
+  var isSemicolonLocale = false;
+  
+  if (locale) {
+    var l = locale.toLowerCase();
+    // 1. Kiểm tra qua mã ngôn ngữ / vùng miền phổ biến dùng dấu chấm phẩy
+    if (l.indexOf("vi") === 0 || l.indexOf("_vn") !== -1 || l.indexOf("-vn") !== -1 ||
+        l.indexOf("fr") === 0 || l.indexOf("de") === 0 || l.indexOf("es") === 0 || 
+        l.indexOf("it") === 0 || l.indexOf("ru") === 0 || l.indexOf("pt") === 0 || 
+        l.indexOf("nl") === 0 || l.indexOf("pl") === 0 || l.indexOf("tr") === 0 || 
+        l.indexOf("id") === 0) {
+      isSemicolonLocale = true;
+    } else {
+      // 2. Thử định dạng số bằng toLocaleString để tự phát hiện vùng miền dùng chấm phẩy
+      try {
+        var bcpLocale = locale.replace('_', '-');
+        var formatted = (1.5).toLocaleString(bcpLocale);
+        if (formatted.indexOf(',') !== -1) {
+          isSemicolonLocale = true;
+        }
+      } catch (e) {
+        // Bỏ qua
+      }
+    }
+  }
+  
+  if (!isSemicolonLocale) {
+    return formula;
+  }
+  
+  // Thuật toán tách ký tự để thay thế dấu phẩy ngoài chuỗi thành dấu chấm phẩy
+  var result = "";
+  var inQuotes = false;
+  var quoteChar = "";
+  
+  for (var i = 0; i < formula.length; i++) {
+    var c = formula.charAt(i);
+    if ((c === '"' || c === "'") && (i === 0 || formula.charAt(i - 1) !== '\\')) {
+      if (!inQuotes) {
+        inQuotes = true;
+        quoteChar = c;
+      } else if (c === quoteChar) {
+        inQuotes = false;
+      }
+    }
+    
+    if (c === ',' && !inQuotes) {
+      result += ';';
+    } else {
+      result += c;
+    }
+  }
+  return result;
+}
+
+// Lấy tuần ISO
+function getISOWeekNumber(d) {
+  var date = new Date(d.getTime());
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
+  var week1 = new Date(date.getFullYear(), 0, 4);
+  return 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+}
+
+// Lấy thứ Việt Nam
+function getVietnameseDayOfWeek(d) {
+  var day = d.getDay();
+  var days = ["Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
+  return days[day];
+}
+```
