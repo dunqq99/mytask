@@ -7,6 +7,11 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Đọc cấu hình từ file .env nếu tồn tại
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | xargs)
+fi
+
 echo -e "${BLUE}=== HỆ THỐNG ĐẨY CODE VÀ TRIỂN KHAI ZENBOARD LÊN VPS ===${NC}\n"
 
 # 1. Nhập thông tin kết nối (nếu chưa truyền qua env)
@@ -129,8 +134,8 @@ ssh $SSH_OPTS $VPS_USER@$VPS_IP "cd $TARGET_DIR && \
 if [ $? -eq 0 ]; then
     echo -e "\n${GREEN}===================================================${NC}"
     echo -e "${GREEN}🎉 CHÚC MỪNG! ZENBOARD ĐÃ ĐƯỢC TRIỂN KHAI THÀNH CÔNG!${NC}"
-    echo -e "${GREEN} - Truy cập trang quản trị tại: http://$VPS_IP:8085${NC}"
-    echo -e "${GREEN} - Cổng Database PostgreSQL (nội bộ VPS): 5433${NC}"
+    echo -e "${GREEN} - Truy cập trang quản trị tại: http://$VPS_IP:${FRONTEND_PORT:-8085}${NC}"
+    echo -e "${GREEN} - Cổng Database PostgreSQL (nội bộ VPS): ${POSTGRES_PORT:-5433}${NC}"
     echo -e "${GREEN}===================================================${NC}"
 else
     echo -e "${RED}❌ Khởi chạy Docker Compose trên VPS thất bại! Vui lòng SSH vào VPS để kiểm tra log chi tiết.${NC}"

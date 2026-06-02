@@ -7,11 +7,11 @@ services:
     container_name: zenboard-db
     restart: always
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: zenboard
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "127.0.0.1:5433:5432" # Chỉ cho truy cập database từ nội bộ VPS (localhost) trên cổng 5433 để tăng bảo mật và tránh trùng cổng ngoài
+      - "127.0.0.1:${POSTGRES_PORT}:5432" # Chỉ cho truy cập database từ nội bộ VPS (localhost) qua cổng cấu hình trong .env
     volumes:
       - pgdata:/var/lib/postgresql/data
 
@@ -27,11 +27,11 @@ services:
     environment:
       PGHOST: db       # Kết nối tới container db qua mạng nội bộ Docker
       PGPORT: 5432     # Sử dụng cổng Postgres mặc định trong mạng Docker
-      PGUSER: postgres
-      PGPASSWORD: postgres
-      PGDATABASE: zenboard
-      PORT: 3001
-    # Bỏ phần ports ở host vì Nginx sẽ giao tiếp nội bộ trong mạng Docker của compose, tránh trùng cổng 3001 ở host
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      PORT: ${BACKEND_PORT}
+    # Bỏ phần ports ở host vì Nginx sẽ giao tiếp nội bộ trong mạng Docker của compose, tránh trùng cổng ở host
 
   # Dịch vụ Nginx Web Server (Frontend React + Reverse Proxy)
   frontend:
@@ -41,7 +41,7 @@ services:
     container_name: zenboard-frontend
     restart: always
     ports:
-      - "8085:80"        # Thay đổi từ 80:80 sang 8085:80 để tránh trùng cổng 80 của các web server khác trên VPS
+      - "${FRONTEND_PORT}:80"        # Sử dụng cổng cấu hình trong .env để tránh trùng cổng của các web server khác trên VPS
     depends_on:
       - backend
 
