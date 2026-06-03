@@ -1546,6 +1546,8 @@ export default function App() {
                 onDragOverCard={handleDragOverCard}
                 onDropCard={handleDropCard}
                 columnCustomization={getPlanFeature('columnCustomization')}
+                userPlan={plan}
+                onUpgradeClick={() => setShowUpgradeModal(true)}
               />
             </>
           ) : activeTab === 'planner' ? (

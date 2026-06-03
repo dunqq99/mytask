@@ -21,6 +21,8 @@ export default function Board({
   onDragOverCard,
   onDropCard,
   columnCustomization = true,
+  userPlan = 'free',
+  onUpgradeClick = () => {}
 }) {
   const [isAddingColumn, setIsAddingColumn] = useState(false);
   const [newColumnTitle, setNewColumnTitle] = useState('');
@@ -139,7 +141,10 @@ export default function Board({
               background: 'var(--bg-glass-column)'
             }}
             onClick={() => {
-              if (!columnCustomization) {
+              const isLimitReached = userPlan === 'free' && columns.length >= 5;
+              if (isLimitReached) {
+                onUpgradeClick();
+              } else if (!columnCustomization) {
                 onAddColumn(); // triggers permission check in App.jsx
               } else {
                 setIsAddingColumn(true);
@@ -147,7 +152,7 @@ export default function Board({
             }}
           >
             <Plus size={18} />
-            <span>Thêm cột mới {!columnCustomization && '🔒'}</span>
+            <span>Thêm cột mới { (userPlan === 'free' && columns.length >= 5) ? '🔒' : (!columnCustomization && '🔒')}</span>
           </button>
         )}
       </div>
