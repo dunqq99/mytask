@@ -17,7 +17,8 @@ import {
   CalendarDays,
   Cloud,
   CloudOff,
-  RefreshCw
+  RefreshCw,
+  X
 } from 'lucide-react';
 import Board from './components/Board';
 import Dashboard from './components/Dashboard';
@@ -47,11 +48,11 @@ const AVAILABLE_PARTNER_TAGS = [
 ];
 
 const INITIAL_CATEGORIES = [
-  { id: 'cat-1', name: 'SEO 🔍', parentId: null },
-  { id: 'cat-1-1', name: 'Technical SEO 🛠️', parentId: 'cat-1' },
-  { id: 'cat-1-2', name: 'Content SEO ✍️', parentId: 'cat-1' },
-  { id: 'cat-2', name: 'MKT Performance ⚡', parentId: null },
-  { id: 'cat-3', name: 'MKT Brand 🎨', parentId: null },
+  { id: 'cat-1', name: 'Hướng dẫn sử dụng 📖', parentId: null },
+  { id: 'cat-1-1', name: 'Thao tác cơ bản 🛠️', parentId: 'cat-1' },
+  { id: 'cat-1-2', name: 'Tính năng nâng cao 🚀', parentId: 'cat-1' },
+  { id: 'cat-2', name: 'Quản lý công việc 📂', parentId: null },
+  { id: 'cat-3', name: 'Báo cáo & Thống kê 📊', parentId: null },
   { id: 'cat-4', name: 'Đối tác 🤝', parentId: null },
 ];
 
@@ -72,117 +73,126 @@ const INITIAL_PARTNER_COLUMNS = [
 const INITIAL_CARDS = [
   {
     id: 'partner-card-1',
-    title: 'Công ty TNHH Giải pháp Công nghệ Vintech',
-    description: 'Đối tác tiềm năng cung cấp dịch vụ hạ tầng đám mây. Đang chuẩn bị gửi đề xuất hợp tác gói dịch vụ VIP.',
+    title: 'Đối tác mẫu: Công ty TNHH Giải pháp Công nghệ Vintech',
+    description: 'Đây là thẻ đối tác mẫu trên bảng quản lý Đối tác & Khách hàng. Bạn có thể sử dụng bảng này để theo dõi tiến trình liên hệ với các đối tác của mình.\n\n👉 Hãy chuyển sang tab "Bảng Đối tác" ở thanh menu trên cùng để bắt đầu quản lý phễu đối tác của bạn.',
     tags: ['potential'],
     startDate: '',
     dueDate: '',
     estimatedDuration: 60,
     checklist: [
-      { id: 'p-ch-1', text: 'Tìm hiểu hồ sơ năng lực', completed: true },
-      { id: 'p-ch-2', text: 'Liên hệ người phụ trách kinh doanh', completed: false }
+      { id: 'p-ch-1', text: 'Tìm hiểu thông tin & nhu cầu của đối tác', completed: true },
+      { id: 'p-ch-2', text: 'Gửi email giới thiệu giải pháp dịch vụ', completed: false }
     ],
     categoryId: 'cat-4', // Đối tác 🤝
-    activities: []
+    activities: [
+      { id: 'act-p-1', timestamp: '10:00:00 01/06', text: 'Tạo thẻ đối tác mẫu' }
+    ]
   },
   {
     id: 'partner-card-2',
-    title: 'Đại lý Truyền thông MediaMax',
-    description: 'Đối tác chính thức phụ trách các chiến dịch KOLs & Influencers. Đã ký hợp đồng khung thời hạn 1 năm.',
+    title: 'Đối tác mẫu: Đại lý Truyền thông MediaMax',
+    description: 'Một đối tác mẫu đại diện cho trạng thái "Hợp tác chính thức". Tại đây bạn có thể đính kèm thông tin liên lạc chi tiết, ghi chú các mốc thời gian làm việc hoặc các công việc cụ thể cần triển khai chung.',
     tags: ['strategic'],
-    startDate: '2026-05-15',
-    dueDate: '2027-05-15',
+    startDate: new Date(Date.now() - 86400000 * 5).toISOString().split('T')[0],
+    dueDate: new Date(Date.now() + 86400000 * 30).toISOString().split('T')[0],
     estimatedDuration: 120,
-    checklist: [],
+    checklist: [
+      { id: 'p-ch-3', text: 'Ký kết hợp đồng khung thời hạn 1 năm', completed: true },
+      { id: 'p-ch-4', text: 'Họp kick-off dự án truyền thông quý 3', completed: true }
+    ],
     categoryId: 'cat-4', // Đối tác 🤝
     activities: [
-      { id: 'act-p-1', timestamp: '10:00:00 20/05', text: 'Ký kết hợp đồng thành công' }
+      { id: 'act-p-2', timestamp: '14:30:00 01/06', text: 'Ký kết hợp đồng thành công' }
     ]
   },
   {
     id: 'card-1',
-    title: 'Nghiên cứu thị trường & đối thủ cạnh tranh',
-    description: 'Phân tích điểm mạnh, điểm yếu của 3 đối thủ lớn nhất trong ngành để đề xuất tính năng đột phá.',
-    tags: ['high', 'feature'],
+    title: 'Hướng dẫn 1: Thao tác kéo thả & Quản lý Kanban',
+    description: 'Chào mừng bạn đến với ZenBoard! Bảng Kanban giúp bạn quản lý trạng thái công việc trực quan hơn.\n\n👉 Hãy thử bấm giữ thẻ này và kéo thả qua các cột "Đang triển khai ⚡", "Kiểm duyệt (Review) 👀" để thay đổi trạng thái.\n👉 Click vào thẻ này để mở màn hình chi tiết: tại đây bạn có thể sửa nội dung, gán nhãn dán, thêm công việc con (checklist) hoặc theo dõi lịch sử hoạt động.',
+    tags: ['low', 'design'],
     startDate: new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0], // 2 days ago
-    dueDate: new Date(Date.now()).toISOString().split('T')[0], // Today
+    dueDate: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0], // 3 days later
     estimatedDuration: 180,
     checklist: [
-      { id: 'ch-1', text: 'Tìm kiếm danh sách đối thủ', completed: true },
-      { id: 'ch-2', text: 'Phân tích bảng giá & dịch vụ', completed: true },
-      { id: 'ch-3', text: 'Lập báo cáo so sánh (SWOT)', completed: false },
-      { id: 'ch-4', text: 'Họp đội ngũ thống nhất kế hoạch', completed: false }
+      { id: 'ch-1', text: 'Bấm vào thẻ này để xem chi tiết thông tin', completed: true },
+      { id: 'ch-2', text: 'Thử kéo thả thẻ này sang cột "Đang triển khai"', completed: false },
+      { id: 'ch-3', text: 'Thêm một nhãn dán mới phù hợp (ví dụ: Quan trọng)', completed: false }
     ],
-    categoryId: 'cat-2', // MKT Performance
+    categoryId: 'cat-1-1', // Thao tác cơ bản 🛠️
     activities: [
-      { id: 'act-demo-1', timestamp: '14:30:15 30/05', text: 'Khởi tạo công việc' },
-      { id: 'act-demo-2', timestamp: '16:45:20 30/05', text: 'Gán danh mục "MKT Performance"' }
+      { id: 'act-demo-1', timestamp: '08:30:00 03/06', text: 'Hệ thống tự động tạo thẻ hướng dẫn kéo thả' }
     ]
   },
   {
     id: 'card-2',
-    title: 'Thiết kế giao diện UI/UX của ZenBoard',
-    description: 'Thiết kế các bản mockup cho giao diện Kanban, trang Dashboard và Dialog chi tiết công việc trên Figma.',
-    tags: ['design', 'feature'],
-    startDate: new Date(Date.now()).toISOString().split('T')[0], // Today
-    dueDate: new Date(Date.now() + 86400000).toISOString().split('T')[0], // Tomorrow
+    title: 'Hướng dẫn 2: Lập kế hoạch tuần & Tự động sắp xếp công việc',
+    description: 'ZenBoard tích hợp tính năng lập lịch ca làm việc cực kỳ thông minh.\n\n👉 Hãy chuyển sang tab "Lập kế hoạch" ở thanh điều hướng trên cùng để xem:\n1. Tính năng "Thiết lập ca làm việc" giúp cấu hình thời gian làm việc (ví dụ: ca sáng, ca tối, đổi ca linh hoạt theo ngày/tuần).\n2. Bạn có thể kéo thả thẻ vào bảng lịch trình tuần/ngày để phân bổ.\n3. Bấm "Sắp xếp thông minh" để hệ thống tự động tính toán thời gian, phân bổ công việc theo ca làm việc đã đăng ký của bạn từ thời điểm hiện tại trở đi.',
+    tags: ['feature'],
+    startDate: new Date().toISOString().split('T')[0], // Today
+    dueDate: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0], // 2 days later
     estimatedDuration: 120,
     checklist: [
-      { id: 'ch-5', text: 'Thiết kế hệ màu Light/Dark Mode', completed: true },
-      { id: 'ch-6', text: 'Vẽ Wireframe chi tiết thẻ', completed: false },
-      { id: 'ch-7', text: 'Tạo Prototype chuyển động kéo thả', completed: false }
+      { id: 'ch-4', text: 'Chuyển sang màn hình Lập kế hoạch ở thanh điều hướng trên', completed: true },
+      { id: 'ch-5', text: 'Tạo hoặc điều chỉnh ca làm việc trong tuần', completed: false },
+      { id: 'ch-6', text: 'Trải nghiệm nút Sắp xếp thông minh để tối ưu lịch trình', completed: false }
     ],
-    categoryId: 'cat-2', // MKT Performance
+    categoryId: 'cat-1-2', // Tính năng nâng cao 🚀
     activities: [
-      { id: 'act-demo-3', timestamp: '09:00:00 01/06', text: 'Khởi tạo công việc và gán nhãn dán "Design"' }
+      { id: 'act-demo-2', timestamp: '09:00:00 03/06', text: 'Tạo thẻ hướng dẫn Lập kế hoạch' }
     ]
   },
   {
     id: 'card-3',
-    title: 'Khắc phục lỗi đăng nhập trên Safari',
-    description: 'Người dùng báo cáo không thể click nút đăng nhập Google trên Safari phiên bản 17.4.',
+    title: 'Hướng dẫn 3: Điều kiện hoàn thành công việc & Tự động khóa thẻ',
+    description: 'Để duy trì chất lượng dự án, hệ thống áp đặt các điều kiện khắt khe để đưa thẻ vào cột "Hoàn thành 🎉":\n1. Công việc con (Checklist) phải hoàn thành 100%.\n2. Phải có đầy đủ thông tin: Ngày bắt đầu và Ngày kết thúc (Hạn chót).\n\n🔒 QUAN TRỌNG: Khi thẻ đã nằm trong cột "Hoàn thành 🎉", hệ thống sẽ khóa toàn bộ các thao tác chỉnh sửa. Nếu muốn chỉnh sửa hoặc kéo thẻ ra cột khác, bạn cần xác nhận lý do khôi phục thẻ.',
     tags: ['high', 'bug'],
-    startDate: new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0], // 2 days ago
-    dueDate: new Date(Date.now() - 86400000).toISOString().split('T')[0], // Yesterday (Overdue)
+    startDate: new Date(Date.now() - 86400000).toISOString().split('T')[0], // Yesterday
+    dueDate: new Date(Date.now() + 86400000 * 4).toISOString().split('T')[0], // 4 days later
     estimatedDuration: 45,
     checklist: [
-      { id: 'ch-8', text: 'Tái hiện lỗi trên thiết bị thử nghiệm', completed: true },
-      { id: 'ch-9', text: 'Cập nhật thư viện OAuth', completed: false }
+      { id: 'ch-7', text: 'Đánh dấu hoàn thành toàn bộ công việc con (Checklist)', completed: true },
+      { id: 'ch-8', text: 'Kiểm tra xem thẻ đã có Ngày bắt đầu và Hạn chót chưa', completed: true },
+      { id: 'ch-9', text: 'Kéo thẻ này vào cột "Hoàn thành 🎉" để kích hoạt chế độ Khóa thẻ', completed: false }
     ],
-    categoryId: 'cat-1-1', // Technical SEO
+    categoryId: 'cat-1-2', // Tính năng nâng cao 🚀
     activities: [
-      { id: 'act-demo-4', timestamp: '10:15:30 30/05', text: 'Di chuyển từ cột "Cần thực hiện" sang cột "Kiểm duyệt"' }
+      { id: 'act-demo-3', timestamp: '09:15:00 03/06', text: 'Tạo thẻ hướng dẫn Quy tắc hoàn thành' }
     ]
   },
   {
     id: 'card-4',
-    title: 'Viết bài viết ra mắt sản phẩm',
-    description: 'Chuẩn bị bài blog truyền thông và các bài đăng social media cho ngày ra mắt ứng dụng.',
+    title: 'Hướng dẫn 4: Tạo thẻ công việc mới & Lọc danh mục',
+    description: 'Bạn có thể dễ dàng khởi tạo các thẻ công việc mới bằng cách bấm vào nút "+ Thêm công việc" ở phía dưới mỗi cột Kanban.\n\nỞ thanh bên trái (Sidebar), hệ thống hiển thị Danh mục công việc (như Hướng dẫn sử dụng, Quản lý dự án...). Khi nhấp chọn một danh mục cụ thể, bảng Kanban sẽ lập tức lọc và chỉ hiển thị các công việc thuộc nhóm đó.',
     tags: ['low'],
-    dueDate: new Date(Date.now() + 86400000 * 4).toISOString().split('T')[0], // 4 days later
+    dueDate: new Date(Date.now() + 86400000 * 5).toISOString().split('T')[0], // 5 days later
     estimatedDuration: 90,
-    checklist: [],
-    categoryId: 'cat-1-2' // Content SEO
+    checklist: [
+      { id: 'ch-10', text: 'Bấm thử vào danh mục "Quản lý dự án" trên thanh Sidebar để lọc', completed: false },
+      { id: 'ch-11', text: 'Bấm "+ Thêm công việc" ở cột 1 để tạo thẻ mới thử nghiệm', completed: false }
+    ],
+    categoryId: 'cat-2' // Quản lý dự án 📂
   },
   {
     id: 'card-5',
-    title: 'Tối ưu hóa tốc độ tải trang (LCP)',
-    description: 'Chuyển đổi toàn bộ định dạng ảnh sang WebP, nén bundle JavaScript và thiết lập CDN để LCP dưới 1.5s.',
+    title: 'Hướng dẫn 5: Báo cáo Thống kê & Chu kỳ dọn dẹp bảng Kanban',
+    description: 'Thẻ công việc này đã được hoàn thành xuất sắc trước hạn chót (Deadline) và được khóa thành công.\n\n👉 Hãy nhấp vào tab "Báo cáo Thống kê" ở thanh menu trên cùng để xem các biểu đồ phân tích năng suất.\n💡 Logic dọn dẹp thông minh: Sang ngày mới, hệ thống tự động làm sạch các thẻ đã hoàn thành ở cột "Hoàn thành 🎉" để giữ bảng Kanban luôn thông thoáng. Đừng lo lắng! Tất cả các công việc đã hoàn thành vẫn được lưu trữ đầy đủ để phục vụ báo cáo tuần/tháng hoặc hiển thị trên tab Đã hoàn thành của Planner.',
     tags: ['medium', 'feature'],
-    startDate: new Date(Date.now() - 86400000 * 5).toISOString().split('T')[0], // 5 days ago
-    dueDate: new Date(Date.now() - 86400000 * 3).toISOString().split('T')[0], // 3 days ago
+    startDate: new Date(Date.now() - 86400000 * 4).toISOString().split('T')[0], // 4 days ago
+    dueDate: new Date(Date.now() + 86400000).toISOString().split('T')[0], // Tomorrow
+    completedAt: new Date().toISOString(), // Completed today
     estimatedDuration: 150,
     checklist: [
-      { id: 'ch-10', text: 'Nén toàn bộ tài nguyên hình ảnh', completed: true },
-      { id: 'ch-11', text: 'Cấu hình lazy loading', completed: true }
+      { id: 'ch-12', text: 'Đọc hướng dẫn về logic chu kỳ dọn dẹp ngày/tuần/tháng', completed: true },
+      { id: 'ch-13', text: 'Xem biểu đồ thống kê hiệu quả tại tab Báo cáo Thống kê', completed: true }
     ],
-    categoryId: 'cat-1-1', // Technical SEO
+    categoryId: 'cat-1-1', // Thao tác cơ bản 🛠️
     activities: [
-      { id: 'act-demo-5', timestamp: '08:30:10 27/05', text: 'Khởi tạo công việc' },
-      { id: 'act-demo-6', timestamp: '17:00:00 29/05', text: 'Di chuyển sang cột "Hoàn thành" sau khi tối ưu đạt chuẩn' }
+      { id: 'act-demo-4', timestamp: '08:00:00 03/06', text: 'Khởi tạo công việc hướng dẫn hoàn thành' },
+      { id: 'act-demo-5', timestamp: '11:00:00 03/06', text: 'Đạt điều kiện hoàn thành, chuyển thẻ sang cột Hoàn thành và tự động khóa' }
     ]
   }
 ];
+
 
 const ensureCompletedColumnAtEnd = (cols, completedId) => {
   const completedCol = cols.find(c => c.id === completedId);
@@ -341,6 +351,43 @@ export default function App() {
 
   const [isBackendConnected, setIsBackendConnected] = useState(false);
   const [isInitialLoaded, setIsInitialLoaded] = useState(false);
+
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showDbTroubleshootModal, setShowDbTroubleshootModal] = useState(false);
+
+  const handleSelfUpgradePlan = async (targetPlan) => {
+    if (!token) {
+      // Offline fallback: update local storage directly
+      setPlan(targetPlan);
+      localStorage.setItem('zenboard_plan', targetPlan);
+      alert(`Đã nâng cấp lên gói ${targetPlan.toUpperCase()} thành công (chế độ Offline)!`);
+      setShowUpgradeModal(false);
+      return;
+    }
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/user/upgrade-plan`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ plan: targetPlan })
+      });
+      
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Nâng cấp gói thất bại.');
+      }
+      
+      setPlan(targetPlan);
+      localStorage.setItem('zenboard_plan', targetPlan);
+      alert(`🎉 Xin chúc mừng! Bạn đã nâng cấp thành công tài khoản lên gói ${targetPlan.toUpperCase()}!`);
+      setShowUpgradeModal(false);
+    } catch (err) {
+      alert(`Lỗi: ${err.message}`);
+    }
+  };
 
   const handleSyncToGoogleSheets = async (customCards = cards, customCats = categories) => {
     if (!getPlanFeature('googleSheetsSync')) {
@@ -1242,7 +1289,8 @@ export default function App() {
           {/* Database Connection Status Indicator */}
           <div 
             className="database-status-indicator" 
-            title={isBackendConnected ? "Đã kết nối PostgreSQL Database 🟢" : "Mất kết nối với PostgreSQL Backend Database (Đang dùng LocalStorage dự phòng) 🔴"}
+            title={isBackendConnected ? "Đã kết nối PostgreSQL Database 🟢" : "Mất kết nối với PostgreSQL Backend Database. Click để xem hướng dẫn khắc phục! 🔴"}
+            onClick={() => { if (!isBackendConnected) setShowDbTroubleshootModal(true); }}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -1253,7 +1301,8 @@ export default function App() {
               background: 'rgba(255, 255, 255, 0.03)',
               border: '1px solid var(--border-glass)',
               marginRight: '8px',
-              color: isBackendConnected ? '#10b981' : '#ef4444'
+              color: isBackendConnected ? '#10b981' : '#ef4444',
+              cursor: isBackendConnected ? 'default' : 'pointer'
             }}
           >
             <div 
@@ -1368,6 +1417,8 @@ export default function App() {
           setWorkdayDuration={setWorkdayDuration}
           username={username}
           role={role}
+          plan={plan}
+          onUpgradeClick={() => setShowUpgradeModal(true)}
           onLogout={handleLogout}
         />
 
@@ -1528,6 +1579,210 @@ export default function App() {
           />
         );
       })()}
+
+      {/* Subscription Upgrade Modal */}
+      {showUpgradeModal && (
+        <div className="modal-overlay" style={{ zIndex: 1999 }}>
+          <div className="modal-content glass-panel" style={{ maxWidth: '750px', padding: '24px', border: '1px solid var(--border-glass)', background: 'rgba(24, 24, 27, 0.95)', backdropFilter: 'blur(20px)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '18px', fontWeight: 'bold' }}>
+                Nâng cấp Gói Dịch vụ ZenBoard 👑
+              </h3>
+              <button 
+                onClick={() => setShowUpgradeModal(false)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 20px 0' }}>
+              Gói hiện tại của bạn: <strong style={{ color: 'var(--primary)', textTransform: 'uppercase' }}>{plan}</strong>. Chọn gói phù hợp bên dưới để mở khóa giới hạn và các tính năng premium:
+            </p>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+              {[
+                { 
+                  key: 'free', 
+                  name: 'FREE (Cơ bản)', 
+                  price: '0đ / tháng',
+                  color: '#71717a', 
+                  bg: 'rgba(113, 113, 122, 0.1)', 
+                  border: '1px solid var(--border-glass)',
+                  features: ['Giới hạn 10 thẻ việc', 'Lập kế hoạch cơ bản', 'Không đồng bộ Sheets', 'Không lưu nhật ký']
+                },
+                { 
+                  key: 'pro', 
+                  name: 'PRO (Nâng cao)', 
+                  price: '199k / tháng',
+                  color: '#a855f7', 
+                  bg: 'rgba(168, 85, 247, 0.1)', 
+                  border: '1px solid rgba(168, 85, 247, 0.3)',
+                  features: ['Giới hạn 100 thẻ việc', 'Tùy chỉnh cột Kanban', 'Lưu nhật ký hoạt động', 'Không đồng bộ Sheets']
+                },
+                { 
+                  key: 'enterprise', 
+                  name: 'ENTERPRISE', 
+                  price: '499k / tháng',
+                  color: '#3b82f6', 
+                  bg: 'rgba(59, 130, 246, 0.1)', 
+                  border: '1px solid rgba(59, 130, 246, 0.3)',
+                  features: ['Giới hạn 500 thẻ việc', 'Tùy chỉnh cột Kanban', 'Lưu nhật ký hoạt động', 'Đồng bộ Google Sheets']
+                },
+                { 
+                  key: 'vip', 
+                  name: 'VIP (Đặc quyền)', 
+                  price: '999k / tháng',
+                  color: '#f59e0b', 
+                  bg: 'rgba(245, 158, 11, 0.15)', 
+                  border: '1px solid rgba(245, 158, 11, 0.5)',
+                  features: ['Không giới hạn thẻ', 'Mở khóa tất cả tính năng', 'Đồng bộ Google Sheets', 'Hỗ trợ đặc quyền 24/7']
+                }
+              ].map(p => {
+                const isCurrent = plan === p.key;
+                return (
+                  <div key={p.key} style={{ 
+                    background: p.bg, 
+                    border: isCurrent ? `2px solid ${p.color}` : p.border,
+                    borderRadius: '12px',
+                    padding: '16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    position: 'relative'
+                  }}>
+                    {isCurrent && (
+                      <span style={{ 
+                        position: 'absolute', 
+                        top: '-10px', 
+                        right: '10px', 
+                        background: p.color, 
+                        color: '#fff', 
+                        fontSize: '8.5px', 
+                        fontWeight: 'bold', 
+                        padding: '2px 6px', 
+                        borderRadius: '10px',
+                        textTransform: 'uppercase'
+                      }}>
+                        Đang dùng
+                      </span>
+                    )}
+                    <div>
+                      <h4 style={{ color: p.color, fontSize: '13px', fontWeight: 'bold', margin: '0 0 4px 0' }}>{p.name}</h4>
+                      <div style={{ fontSize: '14.5px', fontWeight: 'bold', color: 'var(--text-primary)', margin: '0 0 12px 0' }}>{p.price}</div>
+                      
+                      <ul style={{ paddingLeft: '14px', margin: '0 0 16px 0', fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        {p.features.map((f, idx) => (
+                          <li key={idx} style={{ listStyleType: 'disc' }}>{f}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    
+                    <button
+                      onClick={() => handleSelfUpgradePlan(p.key)}
+                      disabled={isCurrent}
+                      style={{
+                        width: '100%',
+                        padding: '6px 0',
+                        fontSize: '11.5px',
+                        fontWeight: 'bold',
+                        borderRadius: '6px',
+                        border: 'none',
+                        background: isCurrent ? 'rgba(255,255,255,0.05)' : p.color,
+                        color: isCurrent ? 'var(--text-muted)' : '#fff',
+                        cursor: isCurrent ? 'not-allowed' : 'pointer',
+                        transition: 'opacity 0.2s'
+                      }}
+                      onMouseEnter={(e) => { if (!isCurrent) e.currentTarget.style.opacity = 0.85; }}
+                      onMouseLeave={(e) => { if (!isCurrent) e.currentTarget.style.opacity = 1; }}
+                    >
+                      {isCurrent ? 'Hiện tại' : 'Nâng cấp ngay'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            
+            <div style={{ 
+              marginTop: '16px', 
+              padding: '10px', 
+              background: 'rgba(255,255,255,0.02)', 
+              borderRadius: '6px', 
+              fontSize: '11.5px', 
+              color: 'var(--text-muted)',
+              border: '1px solid var(--border-glass)',
+              textAlign: 'center'
+            }}>
+              💡 <strong>Lưu ý trải nghiệm:</strong> ZenBoard được triển khai self-hosted trên VPS của bạn. Nút "Nâng cấp ngay" sẽ trực tiếp ghi cấu hình gói mới vào CSDL PostgreSQL mà không yêu cầu thanh toán thực tế.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Database Troubleshoot Modal */}
+      {showDbTroubleshootModal && (
+        <div className="modal-overlay" style={{ zIndex: 2000 }}>
+          <div className="modal-content glass-panel" style={{ maxWidth: '500px', padding: '24px', border: '1px solid var(--border-glass)', background: 'rgba(24, 24, 27, 0.95)', backdropFilter: 'blur(20px)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, color: '#ef4444', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', fontWeight: 'bold' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444' }} />
+                Trạng thái: Offline (Mất kết nối Database)
+              </h3>
+              <button 
+                onClick={() => setShowDbTroubleshootModal(false)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.6', margin: '0 0 16px 0' }}>
+              Hệ thống hiện đang sử dụng <strong>Cơ sở dữ liệu tạm thời (LocalStorage)</strong> để bạn trải nghiệm. Tất cả các dữ liệu mới sẽ không được đồng bộ lên PostgreSQL trên VPS và có thể bị mất nếu bạn xóa cookie trình duyệt.
+            </p>
+            
+            <h4 style={{ fontSize: '13px', color: 'var(--text-primary)', margin: '0 0 8px 0', fontWeight: '600' }}>Hướng dẫn kiểm tra và khắc phục trên VPS:</h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+              <div>
+                <strong>Bước 1:</strong> SSH vào VPS và chuyển đến thư mục ứng dụng:
+                <pre style={{ background: 'rgba(0,0,0,0.3)', padding: '8px', borderRadius: '6px', fontSize: '11.5px', margin: '4px 0', color: '#a855f7', overflowX: 'auto' }}>
+                  cd /www/wwwroot/mytask/mytask
+                </pre>
+              </div>
+              <div>
+                <strong>Bước 2:</strong> Kiểm tra xem các container Docker có đang chạy không:
+                <pre style={{ background: 'rgba(0,0,0,0.3)', padding: '8px', borderRadius: '6px', fontSize: '11.5px', margin: '4px 0', color: '#a855f7', overflowX: 'auto' }}>
+                  docker compose ps
+                </pre>
+              </div>
+              <div>
+                <strong>Bước 3:</strong> Xem logs của backend container để tìm lỗi cụ thể:
+                <pre style={{ background: 'rgba(0,0,0,0.3)', padding: '8px', borderRadius: '6px', fontSize: '11.5px', margin: '4px 0', color: '#a855f7', overflowX: 'auto' }}>
+                  docker compose logs backend
+                </pre>
+              </div>
+              <div>
+                <strong>Bước 4:</strong> Hãy thử khởi động lại toàn bộ dịch vụ:
+                <pre style={{ background: 'rgba(0,0,0,0.3)', padding: '8px', borderRadius: '6px', fontSize: '11.5px', margin: '4px 0', color: '#a855f7', overflowX: 'auto' }}>
+                  docker compose down && docker compose up --build -d
+                </pre>
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => {
+                  setShowDbTroubleshootModal(false);
+                  window.location.reload();
+                }}
+                style={{ padding: '8px 16px', borderRadius: '8px' }}
+              >
+                Tải lại trang 🔄
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

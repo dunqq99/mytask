@@ -370,9 +370,37 @@ app.post('/api/auth/login', async (req, res) => {
     if (client) client.release();
     res.status(500).json({ error: 'Lỗi đăng nhập: ' + err.message });
   }
+// API Nâng cấp gói dịch vụ (Tự phục vụ / Trải nghiệm)
+app.post('/api/user/upgrade-plan', authenticateToken, async (req, res) => {
+  const { plan } = req.body;
+  const validPlans = ['free', 'pro', 'enterprise', 'vip'];
+  if (!plan || !validPlans.includes(plan)) {
+    return res.status(400).json({ error: 'Gói đăng ký không hợp lệ.' });
+  }
+
+  const userId = req.user.id;
+  let client;
+  try {
+    client = await pool.connect();
+    
+    // Đảm bảo không thay đổi gói VIP của massie123
+    const userRes = await client.query('SELECT username FROM users WHERE id = $1', [userId]);
+    if (userRes.rowCount > 0 && userRes.rows[0].username === 'massie123') {
+      if (plan !== 'vip') {
+        client.release();
+        return res.status(400).json({ error: 'Không thể thay đổi gói của tài khoản massie123.' });
+      }
+    }
+
+    await client.query('UPDATE users SET plan = $1 WHERE id = $2', [plan, userId]);
+    client.release();
+    res.json({ status: 'success', plan });
+  } catch (err) {
+    if (client) client.release();
+    res.status(500).json({ error: 'Lỗi nâng cấp gói dịch vụ: ' + err.message });
+  }
 });
 
-// API lấy danh sách thành viên (Chỉ Admin)
 // API lấy danh sách thành viên (Chỉ Admin)
 app.get('/api/admin/users', authenticateToken, async (req, res) => {
   let client;

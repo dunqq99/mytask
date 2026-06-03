@@ -58,6 +58,8 @@ export default function Sidebar({
   setWorkdayDuration,
   username = '',
   role = 'editor',
+  plan = 'free',
+  onUpgradeClick,
   onLogout
 }) {
   const [isAddingRoot, setIsAddingRoot] = useState(false);
@@ -703,6 +705,46 @@ export default function Sidebar({
                   {role === 'admin' ? 'Admin' : 'Editor'}
                 </span>
                 <span>• Đang hoạt động</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
+                <span style={{ 
+                  padding: '1px 4px', 
+                  borderRadius: '3px', 
+                  fontSize: '9px', 
+                  background: plan === 'vip' ? 'rgba(245, 158, 11, 0.15)' : plan === 'enterprise' ? 'rgba(59, 130, 246, 0.15)' : plan === 'pro' ? 'rgba(168, 85, 247, 0.15)' : 'rgba(113, 113, 122, 0.15)', 
+                  color: plan === 'vip' ? '#f59e0b' : plan === 'enterprise' ? '#3b82f6' : plan === 'pro' ? '#a855f7' : '#71717a',
+                  fontWeight: 'bold',
+                  textTransform: 'uppercase'
+                }}>
+                  {plan ? plan.toUpperCase() : 'FREE'}
+                </span>
+                <button 
+                  onClick={onUpgradeClick}
+                  style={{
+                    background: 'rgba(245, 158, 11, 0.1)',
+                    border: '1px solid rgba(245, 158, 11, 0.2)',
+                    color: '#f59e0b',
+                    fontSize: '9px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    padding: '1px 6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '2px',
+                    borderRadius: '4px',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(245, 158, 11, 0.2)';
+                    e.currentTarget.style.borderColor = 'rgba(245, 158, 11, 0.4)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(245, 158, 11, 0.1)';
+                    e.currentTarget.style.borderColor = 'rgba(245, 158, 11, 0.2)';
+                  }}
+                >
+                  Nâng cấp 👑
+                </button>
               </div>
             </div>
           </div>
