@@ -785,8 +785,8 @@ dialog {
   margin: auto;
   border: none;
   background: transparent;
-  max-width: 650px;
-  width: 90%;
+  max-width: 1050px;
+  width: 95%;
   color: var(--text-primary);
   outline: none;
 }
@@ -809,7 +809,7 @@ dialog::backdrop {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-height: 85vh;
+  max-height: 90vh;
   overflow-y: auto;
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
