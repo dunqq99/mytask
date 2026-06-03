@@ -127,23 +127,27 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
 
       // Bảng danh mục
       await client.query(`CREATE TABLE IF NOT EXISTS categories (
-        id VARCHAR(50) PRIMARY KEY,
+        id VARCHAR(50),
         name VARCHAR(255) NOT NULL,
-        parent_id VARCHAR(50)
+        parent_id VARCHAR(50),
+        user_id VARCHAR(50) DEFAULT 'default' NOT NULL,
+        PRIMARY KEY (id, user_id)
       )`);
 
       // Bảng cột Kanban
       await client.query(`CREATE TABLE IF NOT EXISTS columns (
-        id VARCHAR(50) PRIMARY KEY,
+        id VARCHAR(50),
         title VARCHAR(255) NOT NULL,
         color VARCHAR(50),
         card_ids TEXT, -- Lưu mảng ID dưới dạng JSON string để giữ thứ tự
-        is_partner INTEGER DEFAULT 0
+        is_partner INTEGER DEFAULT 0,
+        user_id VARCHAR(50) DEFAULT 'default' NOT NULL,
+        PRIMARY KEY (id, user_id)
       )`);
 
       // Bảng thẻ công việc
       await client.query(`CREATE TABLE IF NOT EXISTS cards (
-        id VARCHAR(50) PRIMARY KEY,
+        id VARCHAR(50),
         title VARCHAR(255) NOT NULL,
         description TEXT,
         tags TEXT, -- Lưu mảng tags dưới dạng JSON string
@@ -152,13 +156,17 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
         estimated_duration INTEGER DEFAULT 0,
         category_id VARCHAR(50),
         checklist TEXT, -- Lưu checklist dưới dạng JSON string
-        activities TEXT -- Lưu lịch sử hoạt động dưới dạng JSON string
+        activities TEXT, -- Lưu lịch sử hoạt động dưới dạng JSON string
+        user_id VARCHAR(50) DEFAULT 'default' NOT NULL,
+        PRIMARY KEY (id, user_id)
       )`);
 
       // Bảng cấu hình chung (Settings)
       await client.query(`CREATE TABLE IF NOT EXISTS settings (
         key VARCHAR(255),
-        value TEXT
+        value TEXT,
+        user_id VARCHAR(50) DEFAULT 'default' NOT NULL,
+        PRIMARY KEY (key, user_id)
       )`);
 
       // Nâng cấp các bảng để thêm thuộc tính user_id nhằm phân chia không gian dữ liệu
@@ -170,8 +178,34 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
       await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE`);
       await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS completed_at VARCHAR(50)`);
 
+      // Thay đổi Primary Key các bảng thành khóa phức hợp (id, user_id) cho hệ thống nhiều tài khoản
+      try {
+        await client.query(`UPDATE categories SET user_id = 'default' WHERE user_id IS NULL`);
+        await client.query(`ALTER TABLE categories ALTER COLUMN user_id SET NOT NULL`);
+        await client.query(`ALTER TABLE categories DROP CONSTRAINT IF EXISTS categories_pkey`);
+        await client.query(`ALTER TABLE categories ADD CONSTRAINT categories_pkey PRIMARY KEY (id, user_id)`);
+      } catch (dbErr) {
+        // Bỏ qua nếu cấu hình này đã có sẵn
+      }
 
-      // Thay đổi Primary Key bảng settings thành khóa phức hợp (key, user_id)
+      try {
+        await client.query(`UPDATE columns SET user_id = 'default' WHERE user_id IS NULL`);
+        await client.query(`ALTER TABLE columns ALTER COLUMN user_id SET NOT NULL`);
+        await client.query(`ALTER TABLE columns DROP CONSTRAINT IF EXISTS columns_pkey`);
+        await client.query(`ALTER TABLE columns ADD CONSTRAINT columns_pkey PRIMARY KEY (id, user_id)`);
+      } catch (dbErr) {
+        // Bỏ qua nếu cấu hình này đã có sẵn
+      }
+
+      try {
+        await client.query(`UPDATE cards SET user_id = 'default' WHERE user_id IS NULL`);
+        await client.query(`ALTER TABLE cards ALTER COLUMN user_id SET NOT NULL`);
+        await client.query(`ALTER TABLE cards DROP CONSTRAINT IF EXISTS cards_pkey`);
+        await client.query(`ALTER TABLE cards ADD CONSTRAINT cards_pkey PRIMARY KEY (id, user_id)`);
+      } catch (dbErr) {
+        // Bỏ qua nếu cấu hình này đã có sẵn
+      }
+
       try {
         await client.query(`ALTER TABLE settings DROP CONSTRAINT IF EXISTS settings_pkey`);
         await client.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS user_id VARCHAR(50)`);
