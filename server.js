@@ -213,10 +213,10 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
         }
 
         // Tự động seed tính năng của các gói dịch vụ (plan_features) nếu chưa tồn tại
-        const featRes = await client.query("SELECT 1 FROM settings WHERE key = 'plan_features' AND user_id = 'system'");
+        const featRes = await client.query("SELECT value FROM settings WHERE key = 'plan_features' AND user_id = 'system'");
         if (featRes.rowCount === 0) {
           const defaultFeatures = {
-            free: { googleSheetsSync: false, activityLogs: false, checklists: true, cardLimit: 10, columnCustomization: false },
+            free: { googleSheetsSync: false, activityLogs: false, checklists: true, cardLimit: 10, columnCustomization: true },
             pro: { googleSheetsSync: false, activityLogs: true, checklists: true, cardLimit: 100, columnCustomization: true },
             enterprise: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 500, columnCustomization: true },
             vip: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 9999, columnCustomization: true }
@@ -224,6 +224,20 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
           await client.query("INSERT INTO settings (key, value, user_id) VALUES ('plan_features', $1, 'system')", [
             JSON.stringify(defaultFeatures)
           ]);
+        } else {
+          // Migration: Đảm bảo gói free có columnCustomization = true trong DB
+          try {
+            const currentFeatures = JSON.parse(featRes.rows[0].value);
+            if (currentFeatures.free && currentFeatures.free.columnCustomization === false) {
+              currentFeatures.free.columnCustomization = true;
+              await client.query("UPDATE settings SET value = $1 WHERE key = 'plan_features' AND user_id = 'system'", [
+                JSON.stringify(currentFeatures)
+              ]);
+              console.log("[Migration] Đã cập nhật free.columnCustomization thành true trong cơ sở dữ liệu.");
+            }
+          } catch (migrateErr) {
+            console.error('[Migration Error] Lỗi cập nhật cấu hình plan_features:', migrateErr.message);
+          }
         }
       } catch (initErr) {
         console.error('[Database Init Error] Không thể tự động tạo tài khoản mặc định:', initErr.message);
@@ -679,7 +693,7 @@ app.get('/api/board', authenticateToken, async (req, res) => {
       data.planFeatures = JSON.parse(featRes.rows[0].value);
     } else {
       data.planFeatures = {
-        free: { googleSheetsSync: false, activityLogs: false, checklists: true, cardLimit: 10, columnCustomization: false },
+        free: { googleSheetsSync: false, activityLogs: false, checklists: true, cardLimit: 10, columnCustomization: true },
         pro: { googleSheetsSync: false, activityLogs: true, checklists: true, cardLimit: 100, columnCustomization: true },
         enterprise: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 500, columnCustomization: true },
         vip: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 9999, columnCustomization: true }

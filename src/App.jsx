@@ -202,7 +202,7 @@ const ensureCompletedColumnAtEnd = (cols, completedId) => {
 };
 
 const DEFAULT_PLAN_FEATURES = {
-  free: { googleSheetsSync: false, activityLogs: false, checklists: true, cardLimit: 10, columnCustomization: false },
+  free: { googleSheetsSync: false, activityLogs: false, checklists: true, cardLimit: 10, columnCustomization: true },
   pro: { googleSheetsSync: false, activityLogs: true, checklists: true, cardLimit: 100, columnCustomization: true },
   enterprise: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 500, columnCustomization: true },
   vip: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 9999, columnCustomization: true }
@@ -946,6 +946,10 @@ export default function App() {
       alert(`Tùy chỉnh cột Kanban là tính năng của gói PRO trở lên. Gói hiện tại của bạn là ${plan.toUpperCase()}. Vui lòng nâng cấp để sử dụng!`);
       return;
     }
+    if (plan === 'free' && currentColumns.length >= 5) {
+      alert("Gói FREE chỉ được tạo tối đa 5 cột (tính cả cột Hoàn thành). Vui lòng nâng cấp gói để thêm nhiều cột hơn!");
+      return;
+    }
     if (!title) return;
 
     const newColId = isPartnerActive ? `part-col-${Date.now()}` : `col-${Date.now()}`;
@@ -1205,7 +1209,11 @@ export default function App() {
     
     // 2. Column customization
     if (currentFeatures.columnCustomization) {
-      list.push("Tùy chỉnh cột Kanban");
+      if (planKey === 'free') {
+        list.push("Tùy chỉnh cột Kanban (Tối đa 5 cột)");
+      } else {
+        list.push("Tùy chỉnh cột Kanban");
+      }
     } else {
       list.push("Cố định cột (Không tùy chỉnh)");
     }

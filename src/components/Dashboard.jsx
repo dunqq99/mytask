@@ -46,7 +46,7 @@ export default function Dashboard({
 
   const hasSheetsSync = useMemo(() => {
     const DEFAULT_PLAN_FEATURES = {
-      free: { googleSheetsSync: false, activityLogs: false, checklists: true, cardLimit: 10, columnCustomization: false },
+      free: { googleSheetsSync: false, activityLogs: false, checklists: true, cardLimit: 10, columnCustomization: true },
       pro: { googleSheetsSync: false, activityLogs: true, checklists: true, cardLimit: 100, columnCustomization: true },
       enterprise: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 500, columnCustomization: true },
       vip: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 9999, columnCustomization: true }

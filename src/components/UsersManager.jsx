@@ -46,7 +46,7 @@ export default function UsersManager({
 
   // Local state for plan features config
   const [localFeatures, setLocalFeatures] = useState({
-    free: { googleSheetsSync: false, activityLogs: false, checklists: true, cardLimit: 10, columnCustomization: false },
+    free: { googleSheetsSync: false, activityLogs: false, checklists: true, cardLimit: 10, columnCustomization: true },
     pro: { googleSheetsSync: false, activityLogs: true, checklists: true, cardLimit: 100, columnCustomization: true },
     enterprise: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 500, columnCustomization: true },
     vip: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 9999, columnCustomization: true }
@@ -151,7 +151,7 @@ export default function UsersManager({
         activityLogs: false,
         checklists: true,
         cardLimit: 10,
-        columnCustomization: false
+        columnCustomization: true
       };
       return {
         ...prev,
@@ -171,7 +171,7 @@ export default function UsersManager({
         activityLogs: false,
         checklists: true,
         cardLimit: 10,
-        columnCustomization: false
+        columnCustomization: true
       };
       return {
         ...prev,
@@ -497,7 +497,7 @@ export default function UsersManager({
                       activityLogs: false,
                       checklists: true,
                       cardLimit: 10,
-                      columnCustomization: false
+                      columnCustomization: true
                     };
                     
                     return (
