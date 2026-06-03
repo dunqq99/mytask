@@ -370,6 +370,8 @@ app.post('/api/auth/login', async (req, res) => {
     if (client) client.release();
     res.status(500).json({ error: 'Lỗi đăng nhập: ' + err.message });
   }
+});
+
 // API Nâng cấp gói dịch vụ (Tự phục vụ / Trải nghiệm)
 app.post('/api/user/upgrade-plan', authenticateToken, async (req, res) => {
   const { plan } = req.body;
