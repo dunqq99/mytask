@@ -17,7 +17,7 @@ const TAG_COLORS = {
   service: { bg: '#fffbeb', text: '#d97706', label: 'Dịch vụ' }
 };
 
-export default function Card({ card, columnId, columnColor, categories = [], onCardClick, onDragStart, onDragEnd, onDragOverCard }) {
+export default function Card({ card, columnId, columnColor, categories = [], onCardClick, onDragStart, onDragEnd, onDragOverCard, availableTags = [] }) {
   const { id, title, description, tags = [], dueDate, startDate, checklist = [], image, categoryId, estimatedDuration, services = [] } = card;
   
   // Find partner root category ID dynamically
@@ -126,7 +126,8 @@ export default function Card({ card, columnId, columnColor, categories = [], onC
             </span>
           )}
           {tags.map(tagKey => {
-            const tagStyle = TAG_COLORS[tagKey] || { bg: '#e2e8f0', text: '#475569', label: tagKey };
+            const dynamicTag = availableTags.find(t => t.key === tagKey);
+            const tagStyle = dynamicTag || TAG_COLORS[tagKey] || { bg: '#e2e8f0', text: '#475569', label: tagKey };
             return (
               <span
                 key={tagKey}

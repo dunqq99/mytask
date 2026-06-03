@@ -21,6 +21,7 @@ export default function Column({
   onDropCard,
   columnCustomization = true,
   userPlan = 'free',
+  availableTags = [],
 }) {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState(column.title);
@@ -272,6 +273,7 @@ export default function Column({
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
             onDragOverCard={onDragOverCard}
+            availableTags={availableTags}
           />
         ))}
       </div>

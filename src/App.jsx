@@ -251,11 +251,15 @@ export default function App() {
     localStorage.removeItem('zenboard_role');
     localStorage.removeItem('zenboard_plan');
     localStorage.removeItem('zenboard_plan_features');
+    localStorage.removeItem('zenboard_tags');
+    localStorage.removeItem('zenboard_partner_tags');
     setToken('');
     setUsername('');
     setRole('editor');
     setPlan('free');
     setPlanFeatures(null);
+    setTags(AVAILABLE_TAGS);
+    setPartnerTags(AVAILABLE_PARTNER_TAGS);
     // Reset core states to default
     setCategories(INITIAL_CATEGORIES);
     setColumns(ensureCompletedColumnAtEnd(INITIAL_COLUMNS, 'col-4'));
@@ -269,6 +273,22 @@ export default function App() {
   const [partnerColumns, setPartnerColumns] = useState(() => ensureCompletedColumnAtEnd(INITIAL_PARTNER_COLUMNS, 'part-col-4'));
   const [cards, setCards] = useState(INITIAL_CARDS);
   const [categories, setCategories] = useState(INITIAL_CATEGORIES);
+  const [tags, setTags] = useState(() => {
+    try {
+      const saved = localStorage.getItem('zenboard_tags');
+      return saved ? JSON.parse(saved) : AVAILABLE_TAGS;
+    } catch {
+      return AVAILABLE_TAGS;
+    }
+  });
+  const [partnerTags, setPartnerTags] = useState(() => {
+    try {
+      const saved = localStorage.getItem('zenboard_partner_tags');
+      return saved ? JSON.parse(saved) : AVAILABLE_PARTNER_TAGS;
+    } catch {
+      return AVAILABLE_PARTNER_TAGS;
+    }
+  });
   const [activeCategoryId, setActiveCategoryId] = useState('all');
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -567,6 +587,14 @@ export default function App() {
               if (data.settings.lastSyncTime) setLastSyncTime(data.settings.lastSyncTime);
               if (data.settings.shifts) setShifts(data.settings.shifts);
               if (data.settings.weeklyShifts) setWeeklyShifts(data.settings.weeklyShifts);
+              if (data.settings.tags) {
+                setTags(data.settings.tags);
+                localStorage.setItem('zenboard_tags', JSON.stringify(data.settings.tags));
+              }
+              if (data.settings.partnerTags) {
+                setPartnerTags(data.settings.partnerTags);
+                localStorage.setItem('zenboard_partner_tags', JSON.stringify(data.settings.partnerTags));
+              }
             }
           } else {
             // Cơ sở dữ liệu rỗng, tiến hành ghi đè dữ liệu mẫu mặc định lên DB
@@ -643,7 +671,9 @@ export default function App() {
             isAutoSyncEnabled,
             lastSyncTime,
             shifts,
-            weeklyShifts
+            weeklyShifts,
+            tags,
+            partnerTags
           }
         };
 
@@ -678,7 +708,7 @@ export default function App() {
         clearTimeout(backendSyncTimeoutRef.current);
       }
     };
-  }, [categories, columns, partnerColumns, cards, todaySchedule, workdayDuration, googleSheetUrl, googleSheetDisplayUrl, isAutoSyncEnabled, lastSyncTime, isInitialLoaded, token, shifts, weeklyShifts]);
+  }, [categories, columns, partnerColumns, cards, todaySchedule, workdayDuration, googleSheetUrl, googleSheetDisplayUrl, isAutoSyncEnabled, lastSyncTime, isInitialLoaded, token, shifts, weeklyShifts, tags, partnerTags]);
 
   const partnerRootId = (() => {
     const partnerCat = categories.find(c => !c.parentId && c.name.includes('Đối tác'));
@@ -1071,6 +1101,31 @@ export default function App() {
     setCards(cards.map(c => c.id === cardId ? updatedCard : c));
     if (selectedCardInfo && selectedCardInfo.card.id === cardId) {
       setSelectedCardInfo({ card: updatedCard, columnId: colId });
+    }
+  };
+
+  const handleUpdateAvailableTags = (newTags, deletedTagKey = null, isPartnerTags = false) => {
+    if (isPartnerTags) {
+      setPartnerTags(newTags);
+      localStorage.setItem('zenboard_partner_tags', JSON.stringify(newTags));
+    } else {
+      setTags(newTags);
+      localStorage.setItem('zenboard_tags', JSON.stringify(newTags));
+    }
+    
+    // Clean up cards if a tag was deleted
+    if (deletedTagKey) {
+      setCards(prevCards => 
+        prevCards.map(card => {
+          if (card.tags && card.tags.includes(deletedTagKey)) {
+            return {
+              ...card,
+              tags: card.tags.filter(t => t !== deletedTagKey)
+            };
+          }
+          return card;
+        })
+      );
     }
   };
 
@@ -1498,7 +1553,7 @@ export default function App() {
                   >
                     Nhãn:
                   </span>
-                  {(isPartnerActive ? AVAILABLE_PARTNER_TAGS : AVAILABLE_TAGS).map(t => {
+                  {(isPartnerActive ? partnerTags : tags).map(t => {
                     const isActive = selectedFilters.includes(t.key);
                     return (
                       <span
@@ -1548,6 +1603,7 @@ export default function App() {
                 columnCustomization={getPlanFeature('columnCustomization')}
                 userPlan={plan}
                 onUpgradeClick={() => setShowUpgradeModal(true)}
+                availableTags={isPartnerActive ? partnerTags : tags}
               />
             </>
           ) : activeTab === 'planner' ? (
@@ -1623,7 +1679,8 @@ export default function App() {
             onUpdateCard={handleUpdateCard}
             onDeleteCard={handleDeleteCard}
             categories={modalCategories}
-            availableTags={isCardPartner ? AVAILABLE_PARTNER_TAGS : AVAILABLE_TAGS}
+            availableTags={isCardPartner ? partnerTags : tags}
+            onUpdateAvailableTags={(newTags, deletedTagKey) => handleUpdateAvailableTags(newTags, deletedTagKey, isCardPartner)}
             isPartner={isCardPartner}
             partnerRootId={partnerRootId}
             userPlan={plan}

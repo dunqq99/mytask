@@ -11,7 +11,9 @@ import {
   Upload, 
   Image as ImageIcon,
   Lock,
-  Unlock
+  Unlock,
+  Plus,
+  Settings
 } from 'lucide-react';
 
 
@@ -62,6 +64,7 @@ export default function CardModal({
   onDeleteCard, 
   categories = [],
   availableTags = AVAILABLE_TAGS,
+  onUpdateAvailableTags = () => {},
   isPartner = false,
   partnerRootId = 'cat-4',
   isReadOnly = false,
@@ -102,6 +105,67 @@ export default function CardModal({
   const [serviceName, setServiceName] = useState('');
   const [servicePrice, setServicePrice] = useState('');
   const [serviceCustomFields, setServiceCustomFields] = useState([]);
+
+  // Tag management states & helper functions
+  const [isManagingTags, setIsManagingTags] = useState(false);
+  const TAG_COLOR_PRESETS = [
+    { bg: '#fef2f2', text: '#ef4444' }, // Red
+    { bg: '#fffbeb', text: '#f59e0b' }, // Yellow
+    { bg: '#f0fdf4', text: '#10b981' }, // Green
+    { bg: '#f5f3ff', text: '#8b5cf6' }, // Purple
+    { bg: '#ecfeff', text: '#06b6d4' }, // Cyan
+    { bg: '#fff1f2', text: '#f43f5e' }, // Rose
+    { bg: '#fdf2f8', text: '#db2777' }, // Pink
+    { bg: '#f0f9ff', text: '#0284c7' }  // Blue
+  ];
+
+  const handleRenameTag = (tagKey, newLabel) => {
+    const updated = availableTags.map(t => 
+      t.key === tagKey ? { ...t, label: newLabel } : t
+    );
+    onUpdateAvailableTags(updated);
+  };
+
+  const handleCycleTagColor = (tagKey) => {
+    const tag = availableTags.find(t => t.key === tagKey);
+    if (!tag) return;
+    
+    let nextIdx = 0;
+    const currentIdx = TAG_COLOR_PRESETS.findIndex(p => p.bg === tag.bg || p.text === tag.text);
+    if (currentIdx !== -1) {
+      nextIdx = (currentIdx + 1) % TAG_COLOR_PRESETS.length;
+    }
+    const nextPreset = TAG_COLOR_PRESETS[nextIdx];
+    
+    const updated = availableTags.map(t => 
+      t.key === tagKey ? { ...t, bg: nextPreset.bg, text: nextPreset.text } : t
+    );
+    onUpdateAvailableTags(updated);
+  };
+
+  const handleDeleteTag = (tagKey) => {
+    if (confirm(`Bạn chắc chắn muốn xóa nhãn dán này?`)) {
+      const updated = availableTags.filter(t => t.key !== tagKey);
+      if (tags.includes(tagKey)) {
+        const nextTags = tags.filter(t => t !== tagKey);
+        setTags(nextTags);
+        saveField('tags', nextTags);
+      }
+      onUpdateAvailableTags(updated, tagKey);
+    }
+  };
+
+  const handleAddNewTag = () => {
+    const newKey = `tag-${Date.now()}`;
+    const defaultColor = TAG_COLOR_PRESETS[Math.floor(Math.random() * TAG_COLOR_PRESETS.length)];
+    const newTag = {
+      key: newKey,
+      label: 'Nhãn mới',
+      bg: defaultColor.bg,
+      text: defaultColor.text
+    };
+    onUpdateAvailableTags([...availableTags, newTag]);
+  };
 
   // Markdown Tab states
   const [descTab, setDescTab] = useState('edit'); // 'edit' or 'preview'
@@ -852,29 +916,131 @@ export default function CardModal({
 
             {/* Tags Selection */}
             <div className="sidebar-section" style={{ marginBottom: '16px' }}>
-              <div className="modal-section-title">
-                <Tag size={14} style={{ marginRight: '4px' }} />
-                <span>Nhãn dán (Labels)</span>
+              <div className="modal-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <Tag size={14} style={{ marginRight: '4px' }} />
+                  <span>Nhãn dán (Labels)</span>
+                </div>
+                {!effectiveReadOnly && (
+                  <button
+                    type="button"
+                    onClick={() => setIsManagingTags(!isManagingTags)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: isManagingTags ? 'var(--primary)' : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '2px',
+                      borderRadius: '4px',
+                      transition: 'color 0.15s ease'
+                    }}
+                    title="Quản lý nhãn dán"
+                  >
+                    <Settings size={14} />
+                  </button>
+                )}
               </div>
-              <div className="tags-selector-grid">
-                {availableTags.map(t => {
-                  const isSelected = tags.includes(t.key);
-                  return (
-                    <span
-                      key={t.key}
-                      className={`tag-selector-item ${isSelected ? 'selected' : ''}`}
-                      style={{
-                        backgroundColor: t.bg,
-                        color: t.text,
-                        border: isSelected ? `2px solid ${t.text}` : '2px solid transparent'
-                      }}
-                      onClick={() => handleToggleTag(t.key)}
-                    >
-                      {t.label}
-                    </span>
-                  );
-                })}
-              </div>
+
+              {isManagingTags ? (
+                <div style={{
+                  background: 'rgba(255,255,255,0.02)',
+                  border: '1px solid var(--border-glass)',
+                  borderRadius: '8px',
+                  padding: '10px',
+                  marginTop: '6px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px'
+                }}>
+                  {availableTags.map((t) => (
+                    <div key={t.key} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleCycleTagColor(t.key)}
+                        style={{
+                          width: '20px',
+                          height: '20px',
+                          borderRadius: '4px',
+                          backgroundColor: t.bg,
+                          border: `1.5px solid ${t.text}`,
+                          cursor: 'pointer',
+                          padding: 0
+                        }}
+                        title="Nhấp để đổi màu nhãn"
+                      />
+                      <input
+                        type="text"
+                        value={t.label}
+                        onChange={(e) => handleRenameTag(t.key, e.target.value)}
+                        style={{
+                          flex: 1,
+                          background: 'rgba(255,255,255,0.05)',
+                          border: '1px solid var(--border-glass)',
+                          borderRadius: '4px',
+                          padding: '2px 6px',
+                          fontSize: '12px',
+                          color: 'var(--text-primary)'
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteTag(t.key)}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: 'var(--danger)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          padding: '4px'
+                        }}
+                        title="Xóa nhãn"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={handleAddNewTag}
+                    className="btn btn-secondary"
+                    style={{
+                      padding: '4px 8px',
+                      fontSize: '11px',
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '4px',
+                      marginTop: '4px'
+                    }}
+                  >
+                    <Plus size={12} /> Thêm nhãn mới
+                  </button>
+                </div>
+              ) : (
+                <div className="tags-selector-grid" style={{ marginTop: '6px' }}>
+                  {availableTags.map(t => {
+                    const isSelected = tags.includes(t.key);
+                    return (
+                      <span
+                        key={t.key}
+                        className={`tag-selector-item ${isSelected ? 'selected' : ''}`}
+                        style={{
+                          backgroundColor: t.bg,
+                          color: t.text,
+                          border: isSelected ? `2px solid ${t.text}` : '2px solid transparent'
+                        }}
+                        onClick={() => handleToggleTag(t.key)}
+                      >
+                        {t.label}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Date Range */}

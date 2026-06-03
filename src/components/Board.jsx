@@ -22,7 +22,8 @@ export default function Board({
   onDropCard,
   columnCustomization = true,
   userPlan = 'free',
-  onUpgradeClick = () => {}
+  onUpgradeClick = () => {},
+  availableTags = []
 }) {
   const [isAddingColumn, setIsAddingColumn] = useState(false);
   const [newColumnTitle, setNewColumnTitle] = useState('');
@@ -65,6 +66,7 @@ export default function Board({
             onDragOverCard={onDragOverCard}
             onDropCard={onDropCard}
             columnCustomization={columnCustomization}
+            availableTags={availableTags}
           />
         );
       })}
