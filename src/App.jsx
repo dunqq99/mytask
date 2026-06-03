@@ -1192,6 +1192,48 @@ export default function App() {
     .filter(c => checkIsCardPartner({ categoryId: c.id }) && c.id !== partnerRootId)
     .map(c => c.parentId === partnerRootId ? { ...c, parentId: null } : c);
 
+  const getPlanFeaturesList = (planKey) => {
+    const currentFeatures = (planFeatures && planFeatures[planKey]) || DEFAULT_PLAN_FEATURES[planKey] || DEFAULT_PLAN_FEATURES.free;
+    const list = [];
+    
+    // 1. Card limit
+    if (currentFeatures.cardLimit >= 9999) {
+      list.push("Không giới hạn thẻ việc");
+    } else {
+      list.push(`Giới hạn ${currentFeatures.cardLimit} thẻ việc`);
+    }
+    
+    // 2. Column customization
+    if (currentFeatures.columnCustomization) {
+      list.push("Tùy chỉnh cột Kanban");
+    } else {
+      list.push("Cố định cột (Không tùy chỉnh)");
+    }
+    
+    // 3. Activity logs
+    if (currentFeatures.activityLogs) {
+      list.push("Lưu nhật ký hoạt động");
+    } else {
+      list.push("Không lưu nhật ký");
+    }
+    
+    // 4. Google Sheets sync
+    if (currentFeatures.googleSheetsSync) {
+      list.push("Đồng bộ Google Sheets");
+    } else {
+      list.push("Không đồng bộ Sheets");
+    }
+
+    // 5. Checklists
+    if (currentFeatures.checklists) {
+      list.push("Checklist công việc con");
+    } else {
+      list.push("Không hỗ trợ checklist");
+    }
+
+    return list;
+  };
+
   if (!token) {
     return (
       <LoginRegister 
@@ -1609,7 +1651,7 @@ export default function App() {
                   color: '#71717a', 
                   bg: 'rgba(113, 113, 122, 0.1)', 
                   border: '1px solid var(--border-glass)',
-                  features: ['Giới hạn 10 thẻ việc', 'Lập kế hoạch cơ bản', 'Không đồng bộ Sheets', 'Không lưu nhật ký']
+                  features: getPlanFeaturesList('free')
                 },
                 { 
                   key: 'pro', 
@@ -1618,7 +1660,7 @@ export default function App() {
                   color: '#a855f7', 
                   bg: 'rgba(168, 85, 247, 0.1)', 
                   border: '1px solid rgba(168, 85, 247, 0.3)',
-                  features: ['Giới hạn 100 thẻ việc', 'Tùy chỉnh cột Kanban', 'Lưu nhật ký hoạt động', 'Không đồng bộ Sheets']
+                  features: getPlanFeaturesList('pro')
                 },
                 { 
                   key: 'enterprise', 
@@ -1627,7 +1669,7 @@ export default function App() {
                   color: '#3b82f6', 
                   bg: 'rgba(59, 130, 246, 0.1)', 
                   border: '1px solid rgba(59, 130, 246, 0.3)',
-                  features: ['Giới hạn 500 thẻ việc', 'Tùy chỉnh cột Kanban', 'Lưu nhật ký hoạt động', 'Đồng bộ Google Sheets']
+                  features: getPlanFeaturesList('enterprise')
                 },
                 { 
                   key: 'vip', 
@@ -1636,7 +1678,7 @@ export default function App() {
                   color: '#f59e0b', 
                   bg: 'rgba(245, 158, 11, 0.15)', 
                   border: '1px solid rgba(245, 158, 11, 0.5)',
-                  features: ['Không giới hạn thẻ', 'Mở khóa tất cả tính năng', 'Đồng bộ Google Sheets', 'Hỗ trợ đặc quyền 24/7']
+                  features: getPlanFeaturesList('vip')
                 }
               ].map(p => {
                 const isCurrent = plan === p.key;
