@@ -52,7 +52,7 @@ export default function LoginRegister({ API_BASE_URL, onAuthSuccess }) {
       }
 
       if (data.token && data.username) {
-        onAuthSuccess(data.token, data.username);
+        onAuthSuccess(data.token, data.username, data.role);
       }
     } catch (err) {
       setError(err.message);

@@ -19,6 +19,8 @@ export default function Column({
   onDragEnd,
   onDragOverCard,
   onDropCard,
+  columnCustomization = true,
+  userPlan = 'free',
 }) {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState(column.title);
@@ -150,7 +152,14 @@ export default function Column({
             <>
               <h3 
                 className="column-title" 
-                onClick={() => !isCompletedColumn && setIsEditingTitle(true)}
+                onClick={() => {
+                  if (isCompletedColumn) return;
+                  if (!columnCustomization) {
+                    alert(`Tùy chỉnh cột Kanban là tính năng của gói PRO trở lên. Gói hiện tại của bạn là ${userPlan.toUpperCase()}. Vui lòng nâng cấp để sử dụng!`);
+                  } else {
+                    setIsEditingTitle(true);
+                  }
+                }}
                 style={{ cursor: isCompletedColumn ? 'default' : 'pointer' }}
               >
                 {column.title}
@@ -181,12 +190,16 @@ export default function Column({
                   <div
                     className="action-menu-item"
                     onClick={() => {
-                      setIsEditingTitle(true);
+                      if (!columnCustomization) {
+                        alert(`Tùy chỉnh cột Kanban là tính năng của gói PRO trở lên. Gói hiện tại của bạn là ${userPlan.toUpperCase()}. Vui lòng nâng cấp để sử dụng!`);
+                      } else {
+                        setIsEditingTitle(true);
+                      }
                       setShowMenu(false);
                     }}
                   >
                     <Edit2 size={14} />
-                    <span>Đổi tên cột</span>
+                    <span>Đổi tên cột {!columnCustomization && '🔒'}</span>
                   </div>
 
                   {/* Column color selection inside the menu */}
@@ -200,7 +213,11 @@ export default function Column({
                           key={color}
                           type="button"
                           onClick={() => {
-                            onUpdateColumnColor(column.id, color);
+                            if (!columnCustomization) {
+                              alert(`Tùy chỉnh cột Kanban là tính năng của gói PRO trở lên. Gói hiện tại của bạn là ${userPlan.toUpperCase()}. Vui lòng nâng cấp để sử dụng!`);
+                            } else {
+                              onUpdateColumnColor(column.id, color);
+                            }
                             setShowMenu(false);
                           }}
                           style={{
@@ -222,14 +239,18 @@ export default function Column({
                   <div
                     className="action-menu-item danger"
                     onClick={() => {
-                      if (confirm(`Bạn chắc chắn muốn xóa cột "${column.title}" và toàn bộ thẻ bên trong?`)) {
-                        onDeleteColumn(column.id);
+                      if (!columnCustomization) {
+                        alert(`Tùy chỉnh cột Kanban là tính năng của gói PRO trở lên. Gói hiện tại của bạn là ${userPlan.toUpperCase()}. Vui lòng nâng cấp để sử dụng!`);
+                      } else {
+                        if (confirm(`Bạn chắc chắn muốn xóa cột "${column.title}" và toàn bộ thẻ bên trong?`)) {
+                          onDeleteColumn(column.id);
+                        }
                       }
                       setShowMenu(false);
                     }}
                   >
                     <Trash2 size={14} />
-                    <span>Xóa cột này</span>
+                    <span>Xóa cột này {!columnCustomization && '🔒'}</span>
                   </div>
                 </div>
               )}

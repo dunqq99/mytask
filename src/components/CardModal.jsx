@@ -9,8 +9,11 @@ import {
   Clock, 
   Folder, 
   Upload, 
-  Image as ImageIcon 
+  Image as ImageIcon,
+  Lock,
+  Unlock
 } from 'lucide-react';
+
 
 const AVAILABLE_TAGS = [
   { key: 'high', bg: '#fef2f2', text: '#ef4444', label: 'Khẩn cấp' },
@@ -60,12 +63,28 @@ export default function CardModal({
   categories = [],
   availableTags = AVAILABLE_TAGS,
   isPartner = false,
-  partnerRootId = 'cat-4'
+  partnerRootId = 'cat-4',
+  isReadOnly = false,
+  userPlan = 'free',
+  planFeatures = null
 }) {
+  const currentFeatures = React.useMemo(() => {
+    const DEFAULT_PLAN_FEATURES = {
+      free: { googleSheetsSync: false, activityLogs: false, checklists: true, cardLimit: 10, columnCustomization: false },
+      pro: { googleSheetsSync: false, activityLogs: true, checklists: true, cardLimit: 100, columnCustomization: true },
+      enterprise: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 500, columnCustomization: true },
+      vip: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 9999, columnCustomization: true }
+    };
+    if (planFeatures && planFeatures[userPlan]) {
+      return planFeatures[userPlan];
+    }
+    return DEFAULT_PLAN_FEATURES[userPlan] || DEFAULT_PLAN_FEATURES.free;
+  }, [planFeatures, userPlan]);
   const dialogRef = useRef(null);
   const imageInputRef = useRef(null);
   
   // Local form states
+  const [isUnlocked, setIsUnlocked] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [checklist, setChecklist] = useState([]);
@@ -91,10 +110,12 @@ export default function CardModal({
   // Sync state when card changes
   useEffect(() => {
     if (card) {
+      setIsUnlocked(false);
       setTitle(card.title || '');
       setDescription(card.description || '');
       setChecklist(card.checklist || []);
       setStartDate(card.startDate || '');
+
       setDueDate(card.dueDate || '');
       setTags(card.tags || []);
       setCategoryId(card.categoryId || '');
@@ -337,6 +358,10 @@ export default function CardModal({
     return result;
   };
 
+  const isCompleted = columnId === 'col-4' || card.isArchived;
+  const isLocked = isCompleted && !isUnlocked;
+  const effectiveReadOnly = isReadOnly || isLocked;
+
   const flattenedCategories = getFlattenedCategories(categories);
   const activities = card.activities || [];
 
@@ -359,14 +384,55 @@ export default function CardModal({
             onChange={(e) => setTitle(e.target.value)}
             onBlur={() => saveField('title', title)}
             placeholder="Tên công việc không được để trống"
+            disabled={effectiveReadOnly}
+            style={effectiveReadOnly ? { pointerEvents: 'none' } : {}}
           />
           <button className="modal-close-btn" onClick={handleClose}>
             <X size={20} />
           </button>
         </div>
 
+        {/* Lock Banner */}
+        {isCompleted && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '8px 16px',
+            background: isLocked ? 'rgba(239, 68, 68, 0.08)' : 'rgba(16, 185, 129, 0.08)',
+            color: isLocked ? '#ef4444' : '#10b981',
+            borderBottom: '1px solid var(--border-glass)',
+            fontSize: '12px',
+            gap: '8px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {isLocked ? <Lock size={14} /> : <Unlock size={14} />}
+              <span>{isLocked ? 'Công việc đã hoàn thành và đang được KHÓA chỉnh sửa.' : 'Công việc đã hoàn thành (Đã mở khóa để chỉnh sửa).'}</span>
+            </div>
+            <button
+              onClick={() => setIsUnlocked(!isUnlocked)}
+              style={{
+                padding: '4px 10px',
+                fontSize: '11px',
+                borderRadius: '6px',
+                background: isLocked ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                color: 'inherit',
+                border: '1px solid currentColor',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontWeight: '600'
+              }}
+            >
+              {isLocked ? 'Mở khóa' : 'Khóa lại'}
+            </button>
+          </div>
+        )}
+
         {/* Grid Area */}
-        <div className="modal-grid">
+        <div className="modal-grid" style={effectiveReadOnly ? { pointerEvents: 'none', opacity: 0.85 } : {}}>
+
           {/* Main Area */}
           <div className="modal-main-col">
             {/* Reference Cover Image */}
@@ -463,35 +529,56 @@ export default function CardModal({
                     <input
                       type="checkbox"
                       checked={item.completed}
+                      disabled={!currentFeatures.checklists}
                       onChange={() => handleToggleCheckItem(item.id)}
                     />
                     <span className={`checklist-item-text ${item.completed ? 'completed' : ''}`}>
                       {item.text}
                     </span>
-                    <button
-                      className="delete-checklist-btn"
-                      onClick={() => handleDeleteCheckItem(item.id)}
-                      title="Xóa việc con này"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    {currentFeatures.checklists && (
+                      <button
+                        className="delete-checklist-btn"
+                        onClick={() => handleDeleteCheckItem(item.id)}
+                        title="Xóa việc con này"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
 
               {/* Add checklist item form */}
-              <form onSubmit={handleAddCheckItem} className="add-checklist-item-form">
-                <input
-                  type="text"
-                  placeholder="Thêm công việc con..."
-                  className="checklist-input"
-                  value={newCheckItem}
-                  onChange={(e) => setNewCheckItem(e.target.value)}
-                />
-                <button type="submit" className="btn btn-secondary" style={{ padding: '8px 14px' }}>
-                  Thêm
-                </button>
-              </form>
+              {currentFeatures.checklists ? (
+                <form onSubmit={handleAddCheckItem} className="add-checklist-item-form">
+                  <input
+                    type="text"
+                    placeholder="Thêm công việc con..."
+                    className="checklist-input"
+                    value={newCheckItem}
+                    onChange={(e) => setNewCheckItem(e.target.value)}
+                  />
+                  <button type="submit" className="btn btn-secondary" style={{ padding: '8px 14px' }}>
+                    Thêm
+                  </button>
+                </form>
+              ) : (
+                <div style={{
+                  padding: '10px 12px',
+                  borderRadius: '6px',
+                  background: 'rgba(255,255,255,0.02)',
+                  border: '1px dashed var(--border-glass)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  color: 'var(--text-muted)',
+                  fontSize: '12.5px',
+                  marginTop: '8px'
+                }}>
+                  <Lock size={13} style={{ color: 'var(--primary)' }} />
+                  <span>Gói dịch vụ hiện tại của bạn không hỗ trợ tạo Checklist công việc.</span>
+                </div>
+              )}
             </div>
 
             {/* Quản lý Dịch vụ & Giá trị hợp tác (Chỉ dành cho Đối tác) */}
@@ -700,12 +787,27 @@ export default function CardModal({
             )}
 
             {/* Activity Logs Section */}
-            <div className="activity-log-container">
+            <div className="activity-log-container" style={{ position: 'relative', overflow: 'hidden' }}>
               <div className="modal-section-title">
                 <Clock size={16} />
                 <span>Nhật ký hoạt động</span>
               </div>
-              {activities.length > 0 ? (
+              {!currentFeatures.activityLogs ? (
+                <div style={{
+                  padding: '12px',
+                  borderRadius: '6px',
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  border: '1px dashed var(--border-glass)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  color: 'var(--text-muted)',
+                  fontSize: '12.5px'
+                }}>
+                  <Lock size={14} style={{ color: 'var(--primary)' }} />
+                  <span>Lịch sử hoạt động khả dụng từ gói PRO trở lên.</span>
+                </div>
+              ) : activities.length > 0 ? (
                 <div className="activity-list">
                   {activities.map(act => (
                     <div key={act.id} className="activity-item">

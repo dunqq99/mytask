@@ -21,7 +21,10 @@ import {
   Timer,
   Activity,
   Cloud,
-  LogOut
+  LogOut,
+  Shield,
+  CreditCard,
+  Database
 } from 'lucide-react';
 
 export default function Sidebar({
@@ -37,6 +40,8 @@ export default function Sidebar({
   activeTab = 'board',
   dashboardSubTab = 'tasks',
   setDashboardSubTab,
+  adminSubTab = 'members',
+  setAdminSubTab,
   plannerBacklogFilter = 'all',
   setPlannerBacklogFilter,
   plannerScheduleView = 'day',
@@ -52,6 +57,7 @@ export default function Sidebar({
   workdayDuration = 480,
   setWorkdayDuration,
   username = '',
+  role = 'editor',
   onLogout
 }) {
   const [isAddingRoot, setIsAddingRoot] = useState(false);
@@ -263,6 +269,8 @@ export default function Sidebar({
             ? "Báo cáo thống kê" 
             : isPlanner 
             ? "Lập kế hoạch" 
+            : activeTab === 'users'
+            ? "Danh mục quản trị"
             : isPartnerBoard 
             ? "Danh mục đối tác" 
             : "Danh mục công việc"}
@@ -508,6 +516,52 @@ export default function Sidebar({
             </div>
 
           </div>
+        ) : activeTab === 'users' ? (
+          <div className="sidebar-section-list">
+            <div 
+              className={`sidebar-item ${adminSubTab === 'members' ? 'active' : ''}`}
+              onClick={() => setAdminSubTab('members')}
+              style={{ cursor: 'pointer' }}
+            >
+              <div className="sidebar-item-content">
+                <Users size={16} />
+                <span className="sidebar-item-text">Thành viên</span>
+              </div>
+            </div>
+
+            <div 
+              className={`sidebar-item ${adminSubTab === 'roles' ? 'active' : ''}`}
+              onClick={() => setAdminSubTab('roles')}
+              style={{ cursor: 'pointer' }}
+            >
+              <div className="sidebar-item-content">
+                <Shield size={16} />
+                <span className="sidebar-item-text">Role</span>
+              </div>
+            </div>
+
+            <div 
+              className={`sidebar-item ${adminSubTab === 'plans' ? 'active' : ''}`}
+              onClick={() => setAdminSubTab('plans')}
+              style={{ cursor: 'pointer' }}
+            >
+              <div className="sidebar-item-content">
+                <CreditCard size={16} />
+                <span className="sidebar-item-text">Gói đăng ký</span>
+              </div>
+            </div>
+
+            <div 
+              className={`sidebar-item ${adminSubTab === 'data' ? 'active' : ''}`}
+              onClick={() => setAdminSubTab('data')}
+              style={{ cursor: 'pointer' }}
+            >
+              <div className="sidebar-item-content">
+                <Database size={16} />
+                <span className="sidebar-item-text">Giám sát dữ liệu</span>
+              </div>
+            </div>
+          </div>
         ) : (
           /* Render Normal Category Management Tree */
           <>
@@ -636,8 +690,19 @@ export default function Sidebar({
               }}>
                 {username}
               </div>
-              <div style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
-                Đang hoạt động
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10.5px', color: 'var(--text-muted)' }}>
+                <span style={{ 
+                  padding: '1px 4px', 
+                  borderRadius: '3px', 
+                  fontSize: '9px', 
+                  background: role === 'admin' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)', 
+                  color: role === 'admin' ? '#ef4444' : '#10b981',
+                  fontWeight: 'bold',
+                  textTransform: 'uppercase'
+                }}>
+                  {role === 'admin' ? 'Admin' : 'Editor'}
+                </span>
+                <span>• Đang hoạt động</span>
               </div>
             </div>
           </div>

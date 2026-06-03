@@ -25,6 +25,7 @@ import CardModal from './components/CardModal';
 import Sidebar from './components/Sidebar';
 import Planner from './components/Planner';
 import LoginRegister from './components/LoginRegister';
+import UsersManager from './components/UsersManager';
 
 // Available tag list for reference
 const AVAILABLE_TAGS = [
@@ -190,6 +191,13 @@ const ensureCompletedColumnAtEnd = (cols, completedId) => {
   return [...otherCols, completedCol];
 };
 
+const DEFAULT_PLAN_FEATURES = {
+  free: { googleSheetsSync: false, activityLogs: false, checklists: true, cardLimit: 10, columnCustomization: false },
+  pro: { googleSheetsSync: false, activityLogs: true, checklists: true, cardLimit: 100, columnCustomization: true },
+  enterprise: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 500, columnCustomization: true },
+  vip: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 9999, columnCustomization: true }
+};
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 
@@ -197,20 +205,47 @@ export default function App() {
   // Auth states
   const [token, setToken] = useState(() => localStorage.getItem('zenboard_token') || '');
   const [username, setUsername] = useState(() => localStorage.getItem('zenboard_username') || '');
+  const [role, setRole] = useState(() => localStorage.getItem('zenboard_role') || 'editor');
+  const [plan, setPlan] = useState(() => localStorage.getItem('zenboard_plan') || 'free');
+  const [planFeatures, setPlanFeatures] = useState(() => {
+    try {
+      const saved = localStorage.getItem('zenboard_plan_features');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
 
-  const handleAuthSuccess = (newToken, newUsername) => {
+  const getPlanFeature = (featureKey) => {
+    const currentPlan = plan || 'free';
+    const features = (planFeatures && planFeatures[currentPlan]) || DEFAULT_PLAN_FEATURES[currentPlan] || DEFAULT_PLAN_FEATURES.free;
+    return features[featureKey];
+  };
+
+
+  const handleAuthSuccess = (newToken, newUsername, newRole, newPlan) => {
     localStorage.setItem('zenboard_token', newToken);
     localStorage.setItem('zenboard_username', newUsername);
+    localStorage.setItem('zenboard_role', newRole || 'editor');
+    localStorage.setItem('zenboard_plan', newPlan || 'free');
     setToken(newToken);
     setUsername(newUsername);
+    setRole(newRole || 'editor');
+    setPlan(newPlan || 'free');
     setIsInitialLoaded(false); // Trigger database load
   };
 
   const handleLogout = () => {
     localStorage.removeItem('zenboard_token');
     localStorage.removeItem('zenboard_username');
+    localStorage.removeItem('zenboard_role');
+    localStorage.removeItem('zenboard_plan');
+    localStorage.removeItem('zenboard_plan_features');
     setToken('');
     setUsername('');
+    setRole('editor');
+    setPlan('free');
+    setPlanFeatures(null);
     // Reset core states to default
     setCategories(INITIAL_CATEGORIES);
     setColumns(ensureCompletedColumnAtEnd(INITIAL_COLUMNS, 'col-4'));
@@ -243,6 +278,7 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState('dashboard'); // 'board', 'planner', 'partners' or 'dashboard'
   const [dashboardSubTab, setDashboardSubTab] = useState('tasks'); // 'tasks' or 'partners'
+  const [adminSubTab, setAdminSubTab] = useState('members'); // 'members', 'roles', 'plans', 'data'
   const [plannerBacklogFilter, setPlannerBacklogFilter] = useState('all'); // 'all', 'urgent', 'no-due', 'short'
   const [plannerScheduleView, setPlannerScheduleView] = useState('day'); // 'day', 'week', 'month'
   const [autoInsertBreaks, setAutoInsertBreaks] = useState(true);
@@ -278,6 +314,12 @@ export default function App() {
   const [todaySchedule, setTodaySchedule] = useState([]);
 
   const [workdayDuration, setWorkdayDuration] = useState(480);
+  const [shifts, setShifts] = useState([
+    { id: 'shift-1', name: 'Ca 1', startTime: '07:00', endTime: '15:00' },
+    { id: 'shift-2', name: 'Ca 2', startTime: '15:00', endTime: '23:00' },
+    { id: 'shift-3', name: 'Ca 3', startTime: '23:00', endTime: '07:00' }
+  ]);
+  const [weeklyShifts, setWeeklyShifts] = useState({});
 
   // Card modal state
   const [selectedCardInfo, setSelectedCardInfo] = useState(null); // { card, columnId }
@@ -301,6 +343,11 @@ export default function App() {
   const [isInitialLoaded, setIsInitialLoaded] = useState(false);
 
   const handleSyncToGoogleSheets = async (customCards = cards, customCats = categories) => {
+    if (!getPlanFeature('googleSheetsSync')) {
+      setSyncStatus('error');
+      setSyncErrorMessage('Tính năng đồng bộ Google Sheets không được hỗ trợ trong gói dịch vụ hiện tại của bạn.');
+      return;
+    }
     if (!googleSheetUrl) {
       setSyncStatus('error');
       setSyncErrorMessage('Vui lòng cấu hình URL Google Apps Script Web App trước!');
@@ -372,9 +419,9 @@ export default function App() {
   };
 
   const syncTimeoutRef = useRef(null);
-
   // Debounced auto-sync when cards, categories, or columns change
   useEffect(() => {
+    if (!getPlanFeature('googleSheetsSync')) return;
     if (isAutoSyncEnabled && googleSheetUrl) {
       if (syncTimeoutRef.current) {
         clearTimeout(syncTimeoutRef.current);
@@ -390,9 +437,7 @@ export default function App() {
         clearTimeout(syncTimeoutRef.current);
       }
     };
-  }, [cards, categories, columns, isAutoSyncEnabled, googleSheetUrl]);
-
-  // Tải dữ liệu ban đầu từ PostgreSQL Database
+  }, [cards, categories, columns, isAutoSyncEnabled, googleSheetUrl, plan, planFeatures]);
   useEffect(() => {
     if (!token) {
       setIsInitialLoaded(true);
@@ -416,10 +461,55 @@ export default function App() {
         if (data.categories && data.columns && data.cards) {
           // Chỉ nạp nếu cơ sở dữ liệu đã có dữ liệu thực tế (tránh nạp trống đè cấu hình)
           if (data.columns.length > 0 || data.cards.length > 0 || data.categories.length > 0) {
+            let loadedCards = data.cards || [];
+            let loadedColumns = data.columns || [];
+
+            // Auto daily-clearing of completed tasks from previous days
+            const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
+            let hasArchiveUpdates = false;
+
+            const updatedCards = loadedCards.map(card => {
+              if (card.completedAt && !card.isArchived) {
+                const completedDateStr = card.completedAt.split('T')[0]; // YYYY-MM-DD
+                if (completedDateStr < todayStr) {
+                  hasArchiveUpdates = true;
+                  return { ...card, isArchived: true };
+                }
+              }
+              return card;
+            });
+
+            let updatedColumns = loadedColumns;
+            if (hasArchiveUpdates) {
+              const archivedIds = updatedCards.filter(c => c.isArchived).map(c => c.id);
+              updatedColumns = loadedColumns.map(col => {
+                if (col.id === 'col-4') {
+                  return {
+                    ...col,
+                    cardIds: col.cardIds.filter(id => !archivedIds.includes(id))
+                  };
+                }
+                return col;
+              });
+            }
+
             setCategories(data.categories);
-            setColumns(data.columns);
+            setColumns(updatedColumns);
             if (data.partnerColumns) setPartnerColumns(data.partnerColumns);
-            setCards(data.cards);
+            setCards(updatedCards);
+            if (data.userRole) {
+
+              setRole(data.userRole);
+              localStorage.setItem('zenboard_role', data.userRole);
+            }
+            if (data.userPlan) {
+              setPlan(data.userPlan);
+              localStorage.setItem('zenboard_plan', data.userPlan);
+            }
+            if (data.planFeatures) {
+              setPlanFeatures(data.planFeatures);
+              localStorage.setItem('zenboard_plan_features', JSON.stringify(data.planFeatures));
+            }
             
             if (data.settings) {
               if (data.settings.todaySchedule) setTodaySchedule(data.settings.todaySchedule);
@@ -428,6 +518,8 @@ export default function App() {
               if (data.settings.googleSheetDisplayUrl) setGoogleSheetDisplayUrl(data.settings.googleSheetDisplayUrl);
               if (data.settings.isAutoSyncEnabled !== undefined) setIsAutoSyncEnabled(data.settings.isAutoSyncEnabled);
               if (data.settings.lastSyncTime) setLastSyncTime(data.settings.lastSyncTime);
+              if (data.settings.shifts) setShifts(data.settings.shifts);
+              if (data.settings.weeklyShifts) setWeeklyShifts(data.settings.weeklyShifts);
             }
           } else {
             // Cơ sở dữ liệu rỗng, tiến hành ghi đè dữ liệu mẫu mặc định lên DB
@@ -450,7 +542,13 @@ export default function App() {
                     googleSheetUrl: '',
                     googleSheetDisplayUrl: '',
                     isAutoSyncEnabled: false,
-                    lastSyncTime: ''
+                    lastSyncTime: '',
+                    shifts: [
+                      { id: 'shift-1', name: 'Ca 1', startTime: '07:00', endTime: '15:00' },
+                      { id: 'shift-2', name: 'Ca 2', startTime: '15:00', endTime: '23:00' },
+                      { id: 'shift-3', name: 'Ca 3', startTime: '23:00', endTime: '07:00' }
+                    ],
+                    weeklyShifts: {}
                   }
                 })
               });
@@ -496,7 +594,9 @@ export default function App() {
             googleSheetUrl,
             googleSheetDisplayUrl,
             isAutoSyncEnabled,
-            lastSyncTime
+            lastSyncTime,
+            shifts,
+            weeklyShifts
           }
         };
 
@@ -521,8 +621,8 @@ export default function App() {
           throw new Error('Lỗi đồng bộ.');
         }
       } catch (err) {
-        console.warn('ZenBoard: Không thể kết nối đồng bộ Backend PostgreSQL.', err.message);
-        setIsBackendConnected(false);
+         console.warn('ZenBoard: Không thể kết nối đồng bộ Backend PostgreSQL.', err.message);
+         setIsBackendConnected(false);
       }
     }, 1500);
 
@@ -531,7 +631,7 @@ export default function App() {
         clearTimeout(backendSyncTimeoutRef.current);
       }
     };
-  }, [categories, columns, partnerColumns, cards, todaySchedule, workdayDuration, googleSheetUrl, googleSheetDisplayUrl, isAutoSyncEnabled, lastSyncTime, isInitialLoaded, token]);
+  }, [categories, columns, partnerColumns, cards, todaySchedule, workdayDuration, googleSheetUrl, googleSheetDisplayUrl, isAutoSyncEnabled, lastSyncTime, isInitialLoaded, token, shifts, weeklyShifts]);
 
   const partnerRootId = (() => {
     const partnerCat = categories.find(c => !c.parentId && c.name.includes('Đối tác'));
@@ -618,7 +718,51 @@ export default function App() {
 
     if (!actualSourceColId) return;
 
-    // 1. Move columns
+    const card = cards.find(c => c.id === cardId);
+    if (!card) return;
+
+    // 1. Validation when dragging to Completed ('col-4')
+    if (targetColId === 'col-4') {
+      const isPartner = checkIsCardPartner(card);
+      if (!isPartner) {
+        const missingFields = [];
+        if (!card.title || !card.title.trim() || card.title === 'Công việc mới') {
+          missingFields.push('Tiêu đề công việc');
+        }
+        if (!card.description || !card.description.trim()) {
+          missingFields.push('Mô tả chi tiết');
+        }
+        if (!card.startDate || !card.startDate.trim()) {
+          missingFields.push('Ngày bắt đầu');
+        }
+        if (!card.dueDate || !card.dueDate.trim()) {
+          missingFields.push('Hạn chót (Deadline/Ngày kết thúc)');
+        }
+        
+        const checklist = card.checklist || [];
+        if (checklist.length > 0 && !checklist.every(item => item.completed)) {
+          missingFields.push('Checklist công việc con (Chưa hoàn thành 100%)');
+        }
+
+        if (missingFields.length > 0) {
+          alert(`Không thể hoàn thành công việc! Vui lòng bổ sung đầy đủ thông tin sau trước khi hoàn thành:\n- ${missingFields.join('\n- ')}`);
+          return; // Cancel drop
+        }
+      }
+    }
+
+    // 2. Handling when moving OUT of Completed ('col-4') -> Reopening
+    let reopenReason = '';
+    if (actualSourceColId === 'col-4' && targetColId !== 'col-4') {
+      const input = prompt('Công việc này đã hoàn thành. Vui lòng nhập lý do mở lại công việc (Ví dụ: "chuyển trạng thái nhầm"):');
+      if (input === null) {
+        // User cancelled, abort move!
+        return;
+      }
+      reopenReason = input.trim() || 'Chuyển trạng thái nhầm';
+    }
+
+    // 3. Move columns
     setCurrentColumns(prevColumns => {
       return prevColumns.map(col => {
         let newCardIds = [...col.cardIds];
@@ -642,7 +786,7 @@ export default function App() {
       });
     });
 
-    // 2. Log activity if columns changed
+    // 4. Log activity if columns changed and handle completion status
     if (actualSourceColId !== targetColId) {
       const sourceCol = currentColumns.find(c => c.id === actualSourceColId);
       const targetCol = currentColumns.find(c => c.id === targetColId);
@@ -653,9 +797,10 @@ export default function App() {
           second: '2-digit',
           day: '2-digit',
           month: '2-digit',
+          year: 'numeric'
         });
         
-        const newLog = {
+        const moveLog = {
           id: `act-${Date.now()}`,
           timestamp,
           text: `Di chuyển từ cột "${sourceCol.title}" sang cột "${targetCol.title}"`
@@ -664,10 +809,29 @@ export default function App() {
         setCards(prevCards => {
           return prevCards.map(c => {
             if (c.id === cardId) {
-              const updatedCard = {
-                ...c,
-                activities: [newLog, ...(c.activities || [])]
-              };
+              let updatedCard = { ...c };
+              let extraLogs = [moveLog];
+
+              // Handle completed date & logs
+              if (targetColId === 'col-4') {
+                updatedCard.completedAt = new Date().toISOString();
+                updatedCard.isArchived = false; // Ensure it is active completed
+                extraLogs.unshift({
+                  id: `act-comp-${Date.now()}`,
+                  timestamp,
+                  text: `Hoàn thành công việc`
+                });
+              } else if (actualSourceColId === 'col-4') {
+                updatedCard.completedAt = null;
+                updatedCard.isArchived = false;
+                extraLogs.unshift({
+                  id: `act-reopen-${Date.now()}`,
+                  timestamp,
+                  text: `Mở lại công việc. Lý do: ${reopenReason}`
+                });
+              }
+
+              updatedCard.activities = [...extraLogs, ...(c.activities || [])];
               
               // Sync active modal if it corresponds to this card
               if (selectedCardInfo && selectedCardInfo.card.id === cardId) {
@@ -690,6 +854,7 @@ export default function App() {
       setTodaySchedule(prev => prev.filter(id => id !== cardId));
     }
   };
+
 
   // Add Category (Root or Sub)
   const handleAddCategory = (name, parentId = null) => {
@@ -730,6 +895,12 @@ export default function App() {
 
   // Add Column
   const handleAddColumn = (title, color = '#3b82f6') => {
+    if (!getPlanFeature('columnCustomization')) {
+      alert(`Tùy chỉnh cột Kanban là tính năng của gói PRO trở lên. Gói hiện tại của bạn là ${plan.toUpperCase()}. Vui lòng nâng cấp để sử dụng!`);
+      return;
+    }
+    if (!title) return;
+
     const newColId = isPartnerActive ? `part-col-${Date.now()}` : `col-${Date.now()}`;
     const newColumn = {
       id: newColId,
@@ -757,6 +928,10 @@ export default function App() {
       alert('Không thể xóa cột hệ thống cố định!');
       return;
     }
+    if (!getPlanFeature('columnCustomization')) {
+      alert(`Tùy chỉnh cột Kanban là tính năng của gói PRO trở lên. Gói hiện tại của bạn là ${plan.toUpperCase()}. Vui lòng nâng cấp để sử dụng!`);
+      return;
+    }
 
     const colToDelete = currentColumns.find(c => c.id === colId);
     if (!colToDelete) return;
@@ -772,6 +947,10 @@ export default function App() {
     if (colId === 'col-4' || colId === 'part-col-4') {
       return;
     }
+    if (!getPlanFeature('columnCustomization')) {
+      alert(`Tùy chỉnh cột Kanban là tính năng của gói PRO trở lên. Gói hiện tại của bạn là ${plan.toUpperCase()}. Vui lòng nâng cấp để sử dụng!`);
+      return;
+    }
 
     setCurrentColumns(currentColumns.map(col => 
       col.id === colId ? { ...col, title: newTitle } : col
@@ -784,6 +963,10 @@ export default function App() {
     if (colId === 'col-4' || colId === 'part-col-4') {
       return;
     }
+    if (!getPlanFeature('columnCustomization')) {
+      alert(`Tùy chỉnh cột Kanban là tính năng của gói PRO trở lên. Gói hiện tại của bạn là ${plan.toUpperCase()}. Vui lòng nâng cấp để sử dụng!`);
+      return;
+    }
 
     setCurrentColumns(currentColumns.map(col => 
       col.id === colId ? { ...col, color: newColor } : col
@@ -792,16 +975,28 @@ export default function App() {
 
   // Add Card to Column
   const handleAddCard = (colId) => {
-    const newCardId = `card-${Date.now()}`;
+    const cardLimit = getPlanFeature('cardLimit');
+    if (cards.length >= cardLimit) {
+      alert(`Đã đạt giới hạn tối đa ${cardLimit} thẻ công việc của gói hiện tại (${plan.toUpperCase()}). Vui lòng nâng cấp gói để tiếp tục!`);
+      return;
+    }
+    const now = new Date();
+    const newCardId = `card-${now.getTime()}`;
     const newCard = {
       id: newCardId,
+
       title: isPartnerActive ? 'Đối tác mới' : 'Công việc mới',
       description: '',
       tags: [],
+      startDate: now.toLocaleDateString('en-CA'),
       dueDate: '',
       checklist: [],
-      categoryId: (activeCategoryId !== 'all' && activeCategoryId !== 'uncategorized') ? activeCategoryId : (isPartnerActive ? partnerRootId : null)
+      categoryId: (activeCategoryId !== 'all' && activeCategoryId !== 'uncategorized') ? activeCategoryId : (isPartnerActive ? partnerRootId : null),
+      createdAt: now.toISOString(),
+      isArchived: false,
+      completedAt: null
     };
+
 
     setCards([newCard, ...cards]);
     setCurrentColumns(currentColumns.map(col => 
@@ -1027,6 +1222,19 @@ export default function App() {
             <LayoutDashboard size={14} />
             <span style={{ fontSize: '12.5px' }}>Báo cáo Thống kê</span>
           </button>
+          {role === 'admin' && (
+            <button 
+              className={`btn ${activeTab === 'users' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ padding: '6px 14px', borderRadius: '8px', border: 'none' }}
+              onClick={() => {
+                setActiveTab('users');
+                setSelectedFilters([]);
+              }}
+            >
+              <Users size={14} />
+              <span style={{ fontSize: '12.5px' }}>Quản lý thành viên</span>
+            </button>
+          )}
         </div>
 
         {/* Global Action Toolbar */}
@@ -1142,6 +1350,8 @@ export default function App() {
           activeTab={activeTab}
           dashboardSubTab={dashboardSubTab}
           setDashboardSubTab={setDashboardSubTab}
+          adminSubTab={adminSubTab}
+          setAdminSubTab={setAdminSubTab}
           plannerBacklogFilter={plannerBacklogFilter}
           setPlannerBacklogFilter={setPlannerBacklogFilter}
           plannerScheduleView={plannerScheduleView}
@@ -1157,6 +1367,7 @@ export default function App() {
           workdayDuration={workdayDuration}
           setWorkdayDuration={setWorkdayDuration}
           username={username}
+          role={role}
           onLogout={handleLogout}
         />
 
@@ -1233,6 +1444,7 @@ export default function App() {
                 onDragEnd={handleDragEnd}
                 onDragOverCard={handleDragOverCard}
                 onDropCard={handleDropCard}
+                columnCustomization={getPlanFeature('columnCustomization')}
               />
             </>
           ) : activeTab === 'planner' ? (
@@ -1251,6 +1463,20 @@ export default function App() {
               autoInsertBreaks={autoInsertBreaks}
               onUpdateCard={handleUpdateCard}
               setCards={setCards}
+              shifts={shifts}
+              setShifts={setShifts}
+              weeklyShifts={weeklyShifts}
+              setWeeklyShifts={setWeeklyShifts}
+            />
+          ) : activeTab === 'users' && role === 'admin' ? (
+            <UsersManager
+              token={token}
+              API_BASE_URL={API_BASE_URL}
+              currentUsername={username}
+              planFeatures={planFeatures}
+              setPlanFeatures={setPlanFeatures}
+              adminSubTab={adminSubTab}
+              setAdminSubTab={setAdminSubTab}
             />
           ) : (
             /* Dashboard Render (passing full states to build complete stats) */
@@ -1270,6 +1496,8 @@ export default function App() {
               lastSyncTime={lastSyncTime}
               syncErrorMessage={syncErrorMessage}
               onSyncNow={() => handleSyncToGoogleSheets(cards, categories)}
+              userPlan={plan}
+              planFeatures={planFeatures}
             />
           )}
         </div>
@@ -1295,6 +1523,8 @@ export default function App() {
             availableTags={isCardPartner ? AVAILABLE_PARTNER_TAGS : AVAILABLE_TAGS}
             isPartner={isCardPartner}
             partnerRootId={partnerRootId}
+            userPlan={plan}
+            planFeatures={planFeatures}
           />
         );
       })()}

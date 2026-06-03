@@ -20,6 +20,7 @@ export default function Board({
   onDragEnd,
   onDragOverCard,
   onDropCard,
+  columnCustomization = true,
 }) {
   const [isAddingColumn, setIsAddingColumn] = useState(false);
   const [newColumnTitle, setNewColumnTitle] = useState('');
@@ -61,6 +62,7 @@ export default function Board({
             onDragEnd={onDragEnd}
             onDragOverCard={onDragOverCard}
             onDropCard={onDropCard}
+            columnCustomization={columnCustomization}
           />
         );
       })}
@@ -136,10 +138,16 @@ export default function Board({
               justifyContent: 'center',
               background: 'var(--bg-glass-column)'
             }}
-            onClick={() => setIsAddingColumn(true)}
+            onClick={() => {
+              if (!columnCustomization) {
+                onAddColumn(); // triggers permission check in App.jsx
+              } else {
+                setIsAddingColumn(true);
+              }
+            }}
           >
             <Plus size={18} />
-            <span>Thêm cột mới</span>
+            <span>Thêm cột mới {!columnCustomization && '🔒'}</span>
           </button>
         )}
       </div>

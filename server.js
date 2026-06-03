@@ -113,8 +113,17 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
         id VARCHAR(50) PRIMARY KEY,
         username VARCHAR(255) UNIQUE NOT NULL,
         password VARCHAR(255) NOT NULL,
+        role VARCHAR(50) DEFAULT 'editor',
+        plan VARCHAR(50) DEFAULT 'free',
+        plan_expires_at TIMESTAMP DEFAULT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )`);
+      // Đảm bảo cột role và plan tồn tại nếu bảng đã được tạo trước đó
+      await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'editor'`);
+      await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS plan VARCHAR(50) DEFAULT 'free'`);
+      await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_expires_at TIMESTAMP DEFAULT NULL`);
+      // Tự động chuyển đổi các tài khoản 'viewer' sang 'editor'
+      await client.query(`UPDATE users SET role = 'editor' WHERE role = 'viewer'`);
 
       // Bảng danh mục
       await client.query(`CREATE TABLE IF NOT EXISTS categories (
@@ -158,6 +167,9 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
       await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS user_id VARCHAR(50)`);
       await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS image TEXT`);
       await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS services TEXT`);
+      await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE`);
+      await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS completed_at VARCHAR(50)`);
+
 
       // Thay đổi Primary Key bảng settings thành khóa phức hợp (key, user_id)
       try {
@@ -182,8 +194,8 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
           
           await client.query('BEGIN');
           // Thêm người dùng
-          await client.query('INSERT INTO users (id, username, password) VALUES ($1, $2, $3)', [
-            userId, usernamePreset, passwordHash
+          await client.query('INSERT INTO users (id, username, password, role, plan) VALUES ($1, $2, $3, $4, $5)', [
+            userId, usernamePreset, passwordHash, 'admin', 'vip'
           ]);
           
           // Di chuyển toàn bộ dữ liệu cũ gán cho massie123
@@ -195,6 +207,23 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
           
           await client.query('COMMIT');
           console.log(`[Database Init] Đã khởi tạo tài khoản và di chuyển dữ liệu thành công cho "${usernamePreset}"!`);
+        } else {
+          // Đảm bảo tài khoản mặc định luôn có quyền admin và gói vip
+          await client.query("UPDATE users SET role = 'admin', plan = 'vip' WHERE username = $1", [usernamePreset]);
+        }
+
+        // Tự động seed tính năng của các gói dịch vụ (plan_features) nếu chưa tồn tại
+        const featRes = await client.query("SELECT 1 FROM settings WHERE key = 'plan_features' AND user_id = 'system'");
+        if (featRes.rowCount === 0) {
+          const defaultFeatures = {
+            free: { googleSheetsSync: false, activityLogs: false, checklists: true, cardLimit: 10, columnCustomization: false },
+            pro: { googleSheetsSync: false, activityLogs: true, checklists: true, cardLimit: 100, columnCustomization: true },
+            enterprise: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 500, columnCustomization: true },
+            vip: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 9999, columnCustomization: true }
+          };
+          await client.query("INSERT INTO settings (key, value, user_id) VALUES ('plan_features', $1, 'system')", [
+            JSON.stringify(defaultFeatures)
+          ]);
         }
       } catch (initErr) {
         console.error('[Database Init Error] Không thể tự động tạo tài khoản mặc định:', initErr.message);
@@ -276,17 +305,19 @@ app.post('/api/auth/register', async (req, res) => {
 
     await client.query('BEGIN');
     
+    // Kiểm tra xem đây có phải người dùng đầu tiên đăng ký không
+    const userCountRes = await client.query('SELECT COUNT(*) FROM users');
+    const isFirstUser = parseInt(userCountRes.rows[0].count, 10) === 0;
+    const defaultRole = (isFirstUser || cleanUsername === 'massie123') ? 'admin' : 'editor';
+
     // Thêm người dùng mới
-    await client.query('INSERT INTO users (id, username, password) VALUES ($1, $2, $3)', [
-      userId, cleanUsername, passwordHash
+    await client.query('INSERT INTO users (id, username, password, role) VALUES ($1, $2, $3, $4)', [
+      userId, cleanUsername, passwordHash, defaultRole
     ]);
 
     // KIỂM TRA MIGRATION: Nếu là người dùng đầu tiên đăng ký, gán toàn bộ dữ liệu cũ (user_id IS NULL) cho họ
-    const userCount = await client.query('SELECT COUNT(*) FROM users');
-    const isFirstUser = parseInt(userCount.rows[0].count, 10) === 1;
-
-    if (isFirstUser) {
-      console.log(`[Migration] Người dùng đầu tiên "${cleanUsername}" đăng ký. Di chuyển toàn bộ dữ liệu cũ gán cho user_id = ${userId}`);
+    if (isFirstUser || cleanUsername === 'massie123') {
+      console.log(`[Migration] Di chuyển toàn bộ dữ liệu cũ gán cho user_id = ${userId}`);
       await client.query(`UPDATE categories SET user_id = $1 WHERE user_id IS NULL`, [userId]);
       await client.query(`UPDATE columns SET user_id = $1 WHERE user_id IS NULL`, [userId]);
       await client.query(`UPDATE cards SET user_id = $1 WHERE user_id IS NULL`, [userId]);
@@ -296,8 +327,8 @@ app.post('/api/auth/register', async (req, res) => {
     await client.query('COMMIT');
     client.release();
 
-    const token = signToken({ id: userId, username: cleanUsername });
-    res.json({ status: 'success', token, username: cleanUsername });
+    const token = signToken({ id: userId, username: cleanUsername, role: defaultRole });
+    res.json({ status: 'success', token, username: cleanUsername, role: defaultRole });
   } catch (err) {
     if (client) {
       try { await client.query('ROLLBACK'); } catch (e) {}
@@ -319,7 +350,7 @@ app.post('/api/auth/login', async (req, res) => {
   let client;
   try {
     client = await pool.connect();
-    const userRes = await client.query('SELECT id, username, password FROM users WHERE username = $1', [cleanUsername]);
+    const userRes = await client.query('SELECT id, username, password, role FROM users WHERE username = $1', [cleanUsername]);
     client.release();
 
     if (userRes.rowCount === 0) {
@@ -333,11 +364,205 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ error: 'Tên đăng nhập hoặc mật khẩu không chính xác.' });
     }
 
-    const token = signToken({ id: user.id, username: user.username });
-    res.json({ status: 'success', token, username: user.username });
+    const token = signToken({ id: user.id, username: user.username, role: user.role });
+    res.json({ status: 'success', token, username: user.username, role: user.role });
   } catch (err) {
     if (client) client.release();
     res.status(500).json({ error: 'Lỗi đăng nhập: ' + err.message });
+  }
+});
+
+// API lấy danh sách thành viên (Chỉ Admin)
+// API lấy danh sách thành viên (Chỉ Admin)
+app.get('/api/admin/users', authenticateToken, async (req, res) => {
+  let client;
+  try {
+    client = await pool.connect();
+    
+    // Kiểm tra trực tiếp role của user từ Database
+    const roleCheck = await client.query('SELECT role FROM users WHERE id = $1', [req.user.id]);
+    if (roleCheck.rowCount === 0 || roleCheck.rows[0].role !== 'admin') {
+      client.release();
+      return res.status(403).json({ error: 'Bạn không có quyền truy cập chức năng này.' });
+    }
+
+    const result = await client.query(`
+      SELECT 
+        u.id, 
+        u.username, 
+        u.role, 
+        u.plan, 
+        u.plan_expires_at AS "planExpiresAt", 
+        u.created_at AS "createdAt",
+        COALESCE((SELECT COUNT(*) FROM cards c WHERE c.user_id = u.id), 0) AS "cardCount",
+        COALESCE((SELECT COUNT(*) FROM columns col WHERE col.user_id = u.id), 0) AS "columnCount",
+        COALESCE((SELECT COUNT(*) FROM categories cat WHERE cat.user_id = u.id), 0) AS "categoryCount"
+      FROM users u
+      ORDER BY u.created_at DESC
+    `);
+    client.release();
+    res.json(result.rows);
+  } catch (err) {
+    if (client) client.release();
+    res.status(500).json({ error: 'Lỗi lấy danh sách thành viên: ' + err.message });
+  }
+});
+
+// API cập nhật vai trò thành viên (Chỉ Admin)
+app.post('/api/admin/users/role', authenticateToken, async (req, res) => {
+  const { userId, role } = req.body;
+  if (!userId || !role) {
+    return res.status(400).json({ error: 'Thiếu thông tin người dùng hoặc vai trò.' });
+  }
+
+  const validRoles = ['admin', 'editor', 'viewer'];
+  if (!validRoles.includes(role)) {
+    return res.status(400).json({ error: 'Vai trò không hợp lệ.' });
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+
+    // Kiểm tra trực tiếp role của user từ Database
+    const roleCheck = await client.query('SELECT role FROM users WHERE id = $1', [req.user.id]);
+    if (roleCheck.rowCount === 0 || roleCheck.rows[0].role !== 'admin') {
+      client.release();
+      return res.status(403).json({ error: 'Bạn không có quyền thực hiện chức năng này.' });
+    }
+    
+    // Kiểm tra bảo vệ quyền tối cao của massie123
+    const targetUserRes = await client.query('SELECT username FROM users WHERE id = $1', [userId]);
+    if (targetUserRes.rowCount > 0 && targetUserRes.rows[0].username === 'massie123' && role !== 'admin') {
+      client.release();
+      return res.status(400).json({ error: 'Không thể thay đổi quyền hạn tối cao của tài khoản massie123.' });
+    }
+
+    // Không cho phép tự hạ quyền của chính mình
+    if (userId === req.user.id) {
+      client.release();
+      return res.status(400).json({ error: 'Bạn không thể tự thay đổi vai trò của chính mình.' });
+    }
+
+    await client.query('UPDATE users SET role = $1 WHERE id = $2', [role, userId]);
+    client.release();
+    res.json({ status: 'success', message: 'Cập nhật quyền hạn thành viên thành công!' });
+  } catch (err) {
+    if (client) client.release();
+    res.status(500).json({ error: 'Lỗi cập nhật vai trò: ' + err.message });
+  }
+});
+
+// API cập nhật vai trò, gói đăng ký & hạn sử dụng thành viên (Chỉ Admin)
+app.post('/api/admin/users/update', authenticateToken, async (req, res) => {
+  const { userId, role, plan, planExpiresAt } = req.body;
+  if (!userId) {
+    return res.status(400).json({ error: 'Thiếu thông tin người dùng.' });
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+
+    // Kiểm tra trực tiếp role của user từ Database
+    const roleCheck = await client.query('SELECT role FROM users WHERE id = $1', [req.user.id]);
+    if (roleCheck.rowCount === 0 || roleCheck.rows[0].role !== 'admin') {
+      client.release();
+      return res.status(403).json({ error: 'Bạn không có quyền thực hiện chức năng này.' });
+    }
+    
+    // Kiểm tra bảo vệ quyền tối cao của massie123
+    const targetUserRes = await client.query('SELECT username FROM users WHERE id = $1', [userId]);
+    if (targetUserRes.rowCount > 0 && targetUserRes.rows[0].username === 'massie123') {
+      if ((role && role !== 'admin') || (plan && plan !== 'vip')) {
+        client.release();
+        return res.status(400).json({ error: 'Không thể thay đổi quyền hạn tối cao của tài khoản massie123.' });
+      }
+    }
+
+    const updates = [];
+    const values = [];
+    let valIdx = 1;
+
+    if (role) {
+      const validRoles = ['admin', 'editor', 'viewer'];
+      if (!validRoles.includes(role)) {
+        client.release();
+        return res.status(400).json({ error: 'Vai trò không hợp lệ.' });
+      }
+      if (userId === req.user.id && role !== 'admin') {
+        client.release();
+        return res.status(400).json({ error: 'Bạn không thể tự thay đổi vai trò của chính mình.' });
+      }
+      updates.push(`role = $${valIdx++}`);
+      values.push(role);
+    }
+
+    if (plan) {
+      const validPlans = ['free', 'pro', 'enterprise', 'vip'];
+      if (!validPlans.includes(plan)) {
+        client.release();
+        return res.status(400).json({ error: 'Gói đăng ký không hợp lệ.' });
+      }
+      updates.push(`plan = $${valIdx++}`);
+      values.push(plan);
+    }
+
+    if (planExpiresAt !== undefined) {
+      updates.push(`plan_expires_at = $${valIdx++}`);
+      values.push(planExpiresAt ? new Date(planExpiresAt) : null);
+    }
+
+    if (updates.length === 0) {
+      client.release();
+      return res.status(400).json({ error: 'Không có thông tin thay đổi.' });
+    }
+
+    values.push(userId);
+    const query = `UPDATE users SET ${updates.join(', ')} WHERE id = $${valIdx}`;
+    await client.query(query, values);
+    
+    client.release();
+    res.json({ status: 'success', message: 'Cập nhật tài khoản thành viên thành công!' });
+  } catch (err) {
+    if (client) client.release();
+    res.status(500).json({ error: 'Lỗi cập nhật tài khoản: ' + err.message });
+  }
+});
+
+// API cập nhật cấu hình tính năng của các gói đăng ký (Chỉ Admin)
+app.post('/api/admin/plans/features', authenticateToken, async (req, res) => {
+  let client;
+  try {
+    client = await pool.connect();
+
+    // Kiểm tra trực tiếp role của user từ Database
+    const roleCheck = await client.query('SELECT role FROM users WHERE id = $1', [req.user.id]);
+    if (roleCheck.rowCount === 0 || roleCheck.rows[0].role !== 'admin') {
+      client.release();
+      return res.status(403).json({ error: 'Bạn không có quyền thực hiện chức năng này.' });
+    }
+
+    const { features } = req.body;
+    if (!features || typeof features !== 'object') {
+      client.release();
+      return res.status(400).json({ error: 'Thiếu cấu hình tính năng gói.' });
+    }
+
+    // Ghi đè vào bảng settings dưới dạng user_id = 'system'
+    await client.query(
+      `INSERT INTO settings (key, value, user_id) 
+       VALUES ('plan_features', $1, 'system') 
+       ON CONFLICT (key, user_id) 
+       DO UPDATE SET value = EXCLUDED.value`,
+      [JSON.stringify(features)]
+    );
+
+    client.release();
+    res.json({ status: 'success', message: 'Cập nhật cấu hình tính năng các gói thành công!' });
+  } catch (err) {
+    if (client) client.release();
+    res.status(500).json({ error: 'Lỗi cập nhật tính năng các gói: ' + err.message });
   }
 });
 
@@ -378,7 +603,7 @@ app.get('/api/board', authenticateToken, async (req, res) => {
     });
 
     // 3. Tải Cards
-    const cardRes = await client.query('SELECT id, title, description, tags, start_date AS "startDate", due_date AS "dueDate", estimated_duration AS "estimatedDuration", category_id AS "categoryId", checklist, activities, image, services FROM cards WHERE user_id = $1', [userId]);
+    const cardRes = await client.query('SELECT id, title, description, tags, start_date AS "startDate", due_date AS "dueDate", estimated_duration AS "estimatedDuration", category_id AS "categoryId", checklist, activities, image, services, is_archived AS "isArchived", completed_at AS "completedAt" FROM cards WHERE user_id = $1', [userId]);
     data.cards = cardRes.rows.map(c => ({
       id: c.id,
       title: c.title,
@@ -391,8 +616,11 @@ app.get('/api/board', authenticateToken, async (req, res) => {
       checklist: JSON.parse(c.checklist || '[]'),
       activities: JSON.parse(c.activities || '[]'),
       image: c.image || null,
-      services: JSON.parse(c.services || '[]')
+      services: JSON.parse(c.services || '[]'),
+      isArchived: !!c.isArchived,
+      completedAt: c.completedAt || null
     }));
+
 
     // 4. Tải Settings
     const setRes = await client.query('SELECT key, value FROM settings WHERE user_id = $1', [userId]);
@@ -403,6 +631,30 @@ app.get('/api/board', authenticateToken, async (req, res) => {
         data.settings[s.key] = s.value;
       }
     });
+
+    // 5. Tải thông tin Plan & Expiry & Role
+    const userRes = await client.query('SELECT role, plan, plan_expires_at AS "planExpiresAt" FROM users WHERE id = $1', [userId]);
+    if (userRes.rowCount > 0) {
+      data.userRole = userRes.rows[0].role;
+      data.userPlan = userRes.rows[0].plan;
+      data.userPlanExpiresAt = userRes.rows[0].planExpiresAt;
+    } else {
+      data.userRole = 'editor';
+      data.userPlan = 'free';
+    }
+
+    // 6. Tải cấu hình tính năng các gói (Plan Features)
+    const featRes = await client.query("SELECT value FROM settings WHERE key = 'plan_features' AND user_id = 'system'");
+    if (featRes.rowCount > 0) {
+      data.planFeatures = JSON.parse(featRes.rows[0].value);
+    } else {
+      data.planFeatures = {
+        free: { googleSheetsSync: false, activityLogs: false, checklists: true, cardLimit: 10, columnCustomization: false },
+        pro: { googleSheetsSync: false, activityLogs: true, checklists: true, cardLimit: 100, columnCustomization: true },
+        enterprise: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 500, columnCustomization: true },
+        vip: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 9999, columnCustomization: true }
+      };
+    }
 
     client.release();
     res.json(data);
@@ -417,6 +669,11 @@ app.post('/api/board/sync', authenticateToken, async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database chưa kết nối thành công.' });
   const { categories, columns, partnerColumns, cards, settings } = req.body;
   const userId = req.user.id;
+  const userRole = req.user.role || 'editor';
+
+  if (userRole === 'viewer') {
+    return res.status(403).json({ error: 'Bạn không có quyền chỉnh sửa dữ liệu (Quyền Xem).' });
+  }
 
   let client;
   try {
@@ -455,8 +712,8 @@ app.post('/api/board/sync', authenticateToken, async (req, res) => {
     if (Array.isArray(cards) && cards.length > 0) {
       for (const c of cards) {
         await client.query(`INSERT INTO cards 
-          (id, title, description, tags, start_date, due_date, estimated_duration, category_id, checklist, activities, image, services, user_id) 
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`, [
+          (id, title, description, tags, start_date, due_date, estimated_duration, category_id, checklist, activities, image, services, user_id, is_archived, completed_at) 
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`, [
             c.id,
             c.title,
             c.description || '',
@@ -469,10 +726,13 @@ app.post('/api/board/sync', authenticateToken, async (req, res) => {
             JSON.stringify(c.activities || []),
             c.image || null,
             JSON.stringify(c.services || []),
-            userId
+            userId,
+            c.isArchived || false,
+            c.completedAt || null
           ]);
       }
     }
+
 
     // 4. Cập nhật Settings
     await client.query('DELETE FROM settings WHERE user_id = $1', [userId]);

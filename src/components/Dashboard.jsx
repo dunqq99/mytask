@@ -17,7 +17,8 @@ import {
   Database,
   RefreshCw,
   ExternalLink,
-  Settings
+  Settings,
+  Crown
 } from 'lucide-react';
 
 export default function Dashboard({ 
@@ -37,9 +38,24 @@ export default function Dashboard({
   syncStatus = 'idle',
   lastSyncTime = '',
   syncErrorMessage = '',
-  onSyncNow
+  onSyncNow,
+  userPlan = 'free',
+  planFeatures = null
 }) {
   const [timePeriod, setTimePeriod] = useState('all'); // 'all', 'day', 'week', 'month'
+
+  const hasSheetsSync = useMemo(() => {
+    const DEFAULT_PLAN_FEATURES = {
+      free: { googleSheetsSync: false, activityLogs: false, checklists: true, cardLimit: 10, columnCustomization: false },
+      pro: { googleSheetsSync: false, activityLogs: true, checklists: true, cardLimit: 100, columnCustomization: true },
+      enterprise: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 500, columnCustomization: true },
+      vip: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 9999, columnCustomization: true }
+    };
+    if (planFeatures && planFeatures[userPlan]) {
+      return !!planFeatures[userPlan].googleSheetsSync;
+    }
+    return userPlan === 'vip' || userPlan === 'enterprise';
+  }, [planFeatures, userPlan]);
 
   // 1. Differentiate cards
   const taskCards = useMemo(() => cards.filter(c => !checkIsCardPartner(c)), [cards, checkIsCardPartner]);
@@ -91,44 +107,70 @@ export default function Dashboard({
   const { firstDay, lastDay } = getMonthRange();
 
   // 3. Filter Task Cards by Period
+  // 4. Task Completed IDs list
+  const completedTaskIds = useMemo(() => columns.find(col => col.id === 'col-4')?.cardIds || [], [columns]);
+
+  // 3. Filter Task Cards by Period
   const filteredTaskCards = useMemo(() => {
     return taskCards.filter(card => {
+      const isCompleted = completedTaskIds.includes(card.id) || card.isArchived || !!card.completedAt;
+      
       if (timePeriod === 'all') return true;
-      if (!card.dueDate) return false;
       
-      if (timePeriod === 'day') {
-        return card.dueDate === todayStr;
-      }
-      
-      const due = parseLocalDate(card.dueDate);
-      if (!due) return false;
-      
-      if (timePeriod === 'week') {
-        return due >= monday && due <= sunday;
-      } else if (timePeriod === 'month') {
-        return due >= firstDay && due <= lastDay;
+      if (isCompleted && card.completedAt) {
+        const completedDate = new Date(card.completedAt);
+        
+        if (timePeriod === 'day') {
+          // Compare YYYY-MM-DD
+          const compYear = completedDate.getFullYear();
+          const compMonth = String(completedDate.getMonth() + 1).padStart(2, '0');
+          const compDay = String(completedDate.getDate()).padStart(2, '0');
+          const compStr = `${compYear}-${compMonth}-${compDay}`;
+          return compStr === todayStr;
+        }
+        
+        if (timePeriod === 'week') {
+          return completedDate >= monday && completedDate <= sunday;
+        } else if (timePeriod === 'month') {
+          return completedDate >= firstDay && completedDate <= lastDay;
+        }
+      } else {
+        // Incomplete or doesn't have completedAt
+        if (!card.dueDate) return false;
+        
+        if (timePeriod === 'day') {
+          return card.dueDate === todayStr;
+        }
+        
+        const due = parseLocalDate(card.dueDate);
+        if (!due) return false;
+        
+        if (timePeriod === 'week') {
+          return due >= monday && due <= sunday;
+        } else if (timePeriod === 'month') {
+          return due >= firstDay && due <= lastDay;
+        }
       }
       return true;
     });
-  }, [taskCards, timePeriod, todayStr, monday, sunday, firstDay, lastDay]);
+  }, [taskCards, timePeriod, todayStr, monday, sunday, firstDay, lastDay, completedTaskIds]);
 
-  // 4. Task KPIs
-  const completedTaskIds = useMemo(() => columns.find(col => col.id === 'col-4')?.cardIds || [], [columns]);
-  
   const totalTaskCount = filteredTaskCards.length;
-  const completedTaskCount = filteredTaskCards.filter(c => completedTaskIds.includes(c.id)).length;
+  const completedTaskCount = filteredTaskCards.filter(c => completedTaskIds.includes(c.id) || c.isArchived || !!c.completedAt).length;
   const activeTaskCount = totalTaskCount - completedTaskCount;
 
   const todayDateObj = new Date();
   todayDateObj.setHours(0, 0, 0, 0);
   const overdueTaskCount = filteredTaskCards.filter(c => {
     if (!c.dueDate) return false;
-    if (completedTaskIds.includes(c.id)) return false;
+    const isCompleted = completedTaskIds.includes(c.id) || c.isArchived || !!c.completedAt;
+    if (isCompleted) return false;
     const due = parseLocalDate(c.dueDate);
     return due ? due < todayDateObj : false;
   }).length;
 
   const taskCompletionRate = totalTaskCount > 0 ? Math.round((completedTaskCount / totalTaskCount) * 100) : 0;
+
 
   // 5. Task Categories Stats
   const categoryStats = useMemo(() => {
@@ -356,8 +398,12 @@ export default function Dashboard({
                   <div className="bar-charts-list">
                     {columns.map(col => {
                       // Filter cards that are part of this period
-                      const count = col.cardIds.filter(id => filteredTaskCards.some(fc => fc.id === id)).length;
+                      let count = col.cardIds.filter(id => filteredTaskCards.some(fc => fc.id === id)).length;
+                      if (col.id === 'col-4') {
+                        count += filteredTaskCards.filter(c => c.isArchived).length;
+                      }
                       const percent = totalTaskCount > 0 ? Math.round((count / totalTaskCount) * 100) : 0;
+
                       
                       return (
                         <div key={col.id} className="bar-chart-item">
@@ -454,13 +500,23 @@ export default function Dashboard({
                           <tr key={card.id}>
                             <td className="task-cell-title">{card.title}</td>
                             <td>
-                              <span 
-                                className="col-status-pill"
-                                style={{ backgroundColor: `${statusCol?.color || 'var(--primary)'}15`, color: statusCol?.color || 'var(--primary)', borderColor: statusCol?.color }}
-                              >
-                                {statusCol?.title || 'Không rõ'}
-                              </span>
+                              {card.isArchived ? (
+                                <span 
+                                  className="col-status-pill"
+                                  style={{ backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#10b981', borderColor: '#10b981' }}
+                                >
+                                  Hoàn thành (Lưu trữ)
+                                </span>
+                              ) : (
+                                <span 
+                                  className="col-status-pill"
+                                  style={{ backgroundColor: `${statusCol?.color || 'var(--primary)'}15`, color: statusCol?.color || 'var(--primary)', borderColor: statusCol?.color }}
+                                >
+                                  {statusCol?.title || 'Không rõ'}
+                                </span>
+                              )}
                             </td>
+
                             <td>{card.estimatedDuration ? `${card.estimatedDuration} phút` : 'Chưa nhập'}</td>
                             <td style={{ color: card.dueDate && new Date(card.dueDate) < todayDateObj && !completedTaskIds.includes(card.id) ? '#ef4444' : 'inherit' }}>
                               {card.dueDate ? card.dueDate.split('-').reverse().join('/') : '-'}
@@ -691,7 +747,55 @@ export default function Dashboard({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               
               {/* Settings Card */}
-              <div className="chart-card glass" style={{ padding: '20px' }}>
+              <div className="chart-card glass" style={{ padding: '20px', position: 'relative', overflow: 'hidden' }}>
+                {!hasSheetsSync && (
+                  <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    background: 'rgba(0,0,0,0.8)',
+                    backdropFilter: 'blur(6px)',
+                    WebkitBackdropFilter: 'blur(6px)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '20px',
+                    textAlign: 'center',
+                    zIndex: 10,
+                    animation: 'fadeIn 0.3s ease'
+                  }}>
+                    <div style={{
+                      width: '48px',
+                      height: '48px',
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                      color: '#fff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginBottom: '12px',
+                      boxShadow: '0 0 15px rgba(245, 158, 11, 0.4)'
+                    }}>
+                      <Crown size={24} />
+                    </div>
+                    <h4 style={{ color: '#f59e0b', fontSize: '14.5px', fontWeight: 'bold', margin: '0 0 8px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Tính năng nâng cao 👑
+                    </h4>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '11.5px', margin: '0 0 16px 0', lineHeight: '1.5' }}>
+                      Tính năng đồng bộ Google Sheets không được hỗ trợ trong gói hiện tại ({userPlan.toUpperCase()}).
+                    </p>
+                    <span style={{ 
+                      fontSize: '11px', 
+                      color: 'var(--text-muted)', 
+                      fontStyle: 'italic' 
+                    }}>
+                      Vui lòng liên hệ quản trị viên để nâng cấp.
+                    </span>
+                  </div>
+                )}
                 <h3 className="chart-header" style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '16px' }}>
                   <Settings size={16} />
                   Cấu hình kết nối
@@ -818,8 +922,23 @@ export default function Dashboard({
 
             </div>
 
-            {/* Right Column: Spreadsheet Live Preview */}
-            <div className="chart-card glass" style={{ padding: '20px', height: '100%', minHeight: '620px', display: 'flex', flexDirection: 'column' }}>
+            <div className="chart-card glass" style={{ padding: '20px', height: '100%', minHeight: '620px', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
+              {!hasSheetsSync && (
+                <div style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: 'rgba(0,0,0,0.85)',
+                  backdropFilter: 'blur(8px)',
+                  WebkitBackdropFilter: 'blur(8px)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 9
+                }} />
+              )}
               <h3 className="chart-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Database size={16} />
