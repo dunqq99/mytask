@@ -182,6 +182,7 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
       await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS completed_at VARCHAR(50)`);
       await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS linked_partner_id VARCHAR(50)`);
       await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS assignee_id VARCHAR(50)`);
+      await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS column_id VARCHAR(50)`);
 
       // Bảng thành viên nhóm (Team Members)
       await client.query(`CREATE TABLE IF NOT EXISTS team_members (
@@ -374,6 +375,30 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
         console.error('[Database Init Error] Lỗi seed tài khoản mẫu doanh nghiệp:', seedErr.message);
       }
 
+      // Migration: Điền column_id cho các thẻ hiện có
+      try {
+        const cardsCheck = await client.query(`SELECT 1 FROM cards WHERE column_id IS NOT NULL LIMIT 1`);
+        if (cardsCheck.rowCount === 0) {
+          console.log(`[Database Migration] Bắt đầu điền column_id cho các thẻ hiện có...`);
+          const colsToMigrate = await client.query('SELECT id, card_ids, user_id FROM columns');
+          for (const colRow of colsToMigrate.rows) {
+            const cardIds = JSON.parse(colRow.card_ids || '[]');
+            if (Array.isArray(cardIds) && cardIds.length > 0) {
+              await client.query(`
+                UPDATE cards 
+                SET column_id = $1 
+                WHERE id = ANY($2::varchar[]) AND user_id = $3 AND column_id IS NULL
+              `, [colRow.id, cardIds, colRow.user_id]);
+            }
+          }
+          // Fallback cho bất kỳ thẻ nào còn lại chưa có column_id
+          await client.query(`UPDATE cards SET column_id = 'col-1' WHERE column_id IS NULL`);
+          console.log(`[Database Migration] Đã điền column_id hoàn tất!`);
+        }
+      } catch (migrateColErr) {
+        console.error('[Database Migration Warning] Không thể di chuyển cột:', migrateColErr.message);
+      }
+
       console.log('[PostgreSQL] Đã khởi tạo cấu trúc bảng dữ liệu thành công!');
       client.release();
       return; // Thành công, thoát khỏi hàm
@@ -469,6 +494,15 @@ function authenticateToken(req, res, next) {
   req.user = user;
   next();
 }
+
+// API Lấy thời gian hệ thống của VPS
+app.get('/api/system-time', (req, res) => {
+  res.json({
+    time: new Date().toLocaleString('vi-VN'),
+    timezone: process.env.TZ || 'Asia/Ho_Chi_Minh',
+    utcTime: new Date().toISOString()
+  });
+});
 
 // API Debug kiểm tra danh sách users
 app.get('/api/debug/users', async (req, res) => {
@@ -1195,38 +1229,56 @@ app.get('/api/board', authenticateToken, async (req, res) => {
       settings: {}
     };
 
-    // 1. Tải Categories
-    const catRes = await client.query('SELECT id, name, parent_id AS "parentId" FROM categories WHERE user_id = $1', [userId]);
+    // Xác định Manager ID của đội nhóm (nếu đang là thành viên của ai đó thì lấy ID người đó, ngược lại là chính mình)
+    let managerId = null;
+    const joinedRes = await client.query("SELECT owner_id FROM team_members WHERE member_id = $1 AND status = 'active' LIMIT 1", [userId]);
+    if (joinedRes.rowCount > 0) {
+      managerId = joinedRes.rows[0].owner_id;
+    }
+    const boardOwnerId = managerId || userId;
+
+    // 1. Tải Categories (của Manager nếu là thành viên)
+    const catRes = await client.query('SELECT id, name, parent_id AS "parentId" FROM categories WHERE user_id = $1', [boardOwnerId]);
     data.categories = catRes.rows;
 
-    // 2. Tải Columns
-    const colRes = await client.query('SELECT id, title, color, card_ids AS "cardIds", is_partner AS "isPartner" FROM columns WHERE user_id = $1', [userId]);
-    colRes.rows.forEach(col => {
-      const parsedCol = {
-        id: col.id,
-        title: col.title,
-        color: col.color,
-        cardIds: JSON.parse(col.cardIds || '[]')
-      };
-      if (col.isPartner === 1) {
-        data.partnerColumns.push(parsedCol);
-      } else {
-        data.columns.push(parsedCol);
+    // 2. Tải Settings (của Manager nếu là thành viên)
+    const setRes = await client.query('SELECT key, value FROM settings WHERE user_id = $1', [boardOwnerId]);
+    setRes.rows.forEach(s => {
+      try {
+        data.settings[s.key] = JSON.parse(s.value);
+      } catch {
+        data.settings[s.key] = s.value;
       }
     });
 
-    // 3. Tải Cards (gồm thẻ tự tạo, thẻ được giao, hoặc thẻ của thành viên trong nhóm)
-    const cardRes = await client.query(`
-      SELECT id, title, description, tags, start_date AS "startDate", due_date AS "dueDate", 
-             estimated_duration AS "estimatedDuration", category_id AS "categoryId", 
-             checklist, activities, image, services, is_archived AS "isArchived", 
-             completed_at AS "completedAt", linked_partner_id AS "linkedPartnerId", 
-             assignee_id AS "assigneeId", user_id AS "userId" 
-      FROM cards 
-      WHERE user_id = $1 
-         OR assignee_id = $1 
-         OR user_id IN (SELECT member_id FROM team_members WHERE owner_id = $1 AND status = 'active')
-    `, [userId]);
+    // 3. Tải Cards
+    // Manager: tải tất cả thẻ của mình và thành viên để phục vụ trang Dashboard của manager
+    // Thành viên: chỉ tải thẻ do mình tạo hoặc được gán
+    let cardRes;
+    if (!managerId) {
+      cardRes = await client.query(`
+        SELECT id, title, description, tags, start_date AS "startDate", due_date AS "dueDate", 
+               estimated_duration AS "estimatedDuration", category_id AS "categoryId", 
+               checklist, activities, image, services, is_archived AS "isArchived", 
+               completed_at AS "completedAt", linked_partner_id AS "linkedPartnerId", 
+               assignee_id AS "assigneeId", user_id AS "userId", column_id AS "columnId" 
+        FROM cards 
+        WHERE user_id = $1 
+           OR assignee_id = $1 
+           OR user_id IN (SELECT member_id FROM team_members WHERE owner_id = $1 AND status = 'active')
+      `, [userId]);
+    } else {
+      cardRes = await client.query(`
+        SELECT id, title, description, tags, start_date AS "startDate", due_date AS "dueDate", 
+               estimated_duration AS "estimatedDuration", category_id AS "categoryId", 
+               checklist, activities, image, services, is_archived AS "isArchived", 
+               completed_at AS "completedAt", linked_partner_id AS "linkedPartnerId", 
+               assignee_id AS "assigneeId", user_id AS "userId", column_id AS "columnId" 
+        FROM cards 
+        WHERE user_id = $1 
+           OR assignee_id = $1
+      `, [userId]);
+    }
     data.cards = cardRes.rows.map(c => ({
       id: c.id,
       title: c.title,
@@ -1244,17 +1296,41 @@ app.get('/api/board', authenticateToken, async (req, res) => {
       completedAt: c.completedAt || null,
       linkedPartnerId: c.linkedPartnerId || null,
       assigneeId: c.assigneeId || null,
-      userId: c.userId || null
+      userId: c.userId || null,
+      columnId: c.columnId || null
     }));
 
+    // 4. Tải Columns (của Manager nếu là thành viên) và tái thiết lập cardIds cho từng cột
+    const colRes = await client.query('SELECT id, title, color, card_ids AS "cardIds", is_partner AS "isPartner" FROM columns WHERE user_id = $1', [boardOwnerId]);
+    
+    // Gom nhóm thẻ đã tải theo columnId
+    const cardsByColumn = {};
+    data.cards.forEach(c => {
+      const colId = c.columnId || 'col-1';
+      if (!cardsByColumn[colId]) cardsByColumn[colId] = [];
+      cardsByColumn[colId].push(c.id);
+    });
 
-    // 4. Tải Settings
-    const setRes = await client.query('SELECT key, value FROM settings WHERE user_id = $1', [userId]);
-    setRes.rows.forEach(s => {
-      try {
-        data.settings[s.key] = JSON.parse(s.value);
-      } catch {
-        data.settings[s.key] = s.value;
+    colRes.rows.forEach(col => {
+      const masterCardIds = JSON.parse(col.cardIds || '[]');
+      const columnCardIds = cardsByColumn[col.id] || [];
+      
+      // Lọc các thẻ thuộc cột này mà user được quyền xem
+      const filteredIds = masterCardIds.filter(id => columnCardIds.includes(id));
+      // Tự động đẩy các thẻ mới ở cột này vào cuối
+      const extraIds = columnCardIds.filter(id => !filteredIds.includes(id));
+      const finalCardIds = [...filteredIds, ...extraIds];
+
+      const parsedCol = {
+        id: col.id,
+        title: col.title,
+        color: col.color,
+        cardIds: finalCardIds
+      };
+      if (col.isPartner === 1) {
+        data.partnerColumns.push(parsedCol);
+      } else {
+        data.columns.push(parsedCol);
       }
     });
 
@@ -1269,11 +1345,10 @@ app.get('/api/board', authenticateToken, async (req, res) => {
       data.userPlan = 'free';
     }
 
-    // Kiểm tra xem user có phải là thành viên hoặc trưởng nhóm của một đội nhóm nào không
     const teamCheckRes = await client.query('SELECT COUNT(*) FROM team_members WHERE owner_id = $1 OR member_id = $1', [userId]);
     data.isTeammate = parseInt(teamCheckRes.rows[0].count, 10) > 0;
 
-    // 6. Tải cấu hình tính năng các gói (Plan Features)
+    // 6. Tải cấu hình tính năng các gói
     const featRes = await client.query("SELECT value FROM settings WHERE key = 'plan_features' AND user_id = 'system'");
     if (featRes.rowCount > 0) {
       data.planFeatures = JSON.parse(featRes.rows[0].value);
@@ -1281,12 +1356,13 @@ app.get('/api/board', authenticateToken, async (req, res) => {
       data.planFeatures = {
         free: { googleSheetsSync: false, activityLogs: false, checklists: true, cardLimit: 10, columnCustomization: true },
         pro: { googleSheetsSync: false, activityLogs: true, checklists: true, cardLimit: 100, columnCustomization: true },
+        business: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 500, columnCustomization: true },
         enterprise: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 500, columnCustomization: true },
         vip: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 9999, columnCustomization: true }
       };
     }
 
-    data.userId = userId; // Trả về ID người dùng đang đăng nhập
+    data.userId = userId;
 
     client.release();
     res.json(data);
@@ -1317,103 +1393,169 @@ app.post('/api/board/sync', authenticateToken, async (req, res) => {
     client = await pool.connect();
     await client.query('BEGIN');
 
-    // 1. Cập nhật Categories
-    await client.query('DELETE FROM categories WHERE user_id = $1', [userId]);
-    if (Array.isArray(categories) && categories.length > 0) {
-      for (const cat of categories) {
-        await client.query('INSERT INTO categories (id, name, parent_id, user_id) VALUES ($1, $2, $3, $4)', [
-          cat.id, cat.name, cat.parentId || null, userId
-        ]);
-      }
+    // Xác định Manager ID của đội nhóm (nếu có)
+    let managerId = null;
+    const joinedRes = await client.query("SELECT owner_id FROM team_members WHERE member_id = $1 AND status = 'active' LIMIT 1", [userId]);
+    if (joinedRes.rowCount > 0) {
+      managerId = joinedRes.rows[0].owner_id;
     }
+    const boardOwnerId = managerId || userId;
 
-    // 2. Cập nhật Columns
-    await client.query('DELETE FROM columns WHERE user_id = $1', [userId]);
-    if (Array.isArray(columns)) {
-      for (const col of columns) {
-        await client.query('INSERT INTO columns (id, title, color, card_ids, is_partner, user_id) VALUES ($1, $2, $3, $4, 0, $5)', [
-          col.id, col.title, col.color || null, JSON.stringify(col.cardIds || []), userId
-        ]);
+    // Chỉ cập nhật categories, columns, settings nếu là Manager hoặc tài khoản cá nhân độc lập
+    if (!managerId) {
+      // 1. Cập nhật Categories
+      await client.query('DELETE FROM categories WHERE user_id = $1', [userId]);
+      if (Array.isArray(categories) && categories.length > 0) {
+        for (const cat of categories) {
+          await client.query('INSERT INTO categories (id, name, parent_id, user_id) VALUES ($1, $2, $3, $4)', [
+            cat.id, cat.name, cat.parentId || null, userId
+          ]);
+        }
       }
-    }
-    if (Array.isArray(partnerColumns)) {
-      for (const col of partnerColumns) {
-        await client.query('INSERT INTO columns (id, title, color, card_ids, is_partner, user_id) VALUES ($1, $2, $3, $4, 1, $5)', [
-          col.id, col.title, col.color || null, JSON.stringify(col.cardIds || []), userId
-        ]);
-      }
-    }
 
-    // 3. Cập nhật Cards (chỉ xóa các thẻ do chính user đó sở hữu)
-    await client.query('DELETE FROM cards WHERE user_id = $1', [userId]);
-    if (Array.isArray(cards) && cards.length > 0) {
-      for (const c of cards) {
-        // Nếu c.userId trùng với userId hoặc không có userId (thẻ mới): thực hiện INSERT
-        if (!c.userId || c.userId === userId) {
-          await client.query(`INSERT INTO cards 
-            (id, title, description, tags, start_date, due_date, estimated_duration, category_id, checklist, activities, image, services, user_id, is_archived, completed_at, linked_partner_id, assignee_id) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`, [
-              c.id,
-              c.title,
-              c.description || '',
-              JSON.stringify(c.tags || []),
-              c.startDate || '',
-              c.dueDate || '',
-              c.estimatedDuration || 0,
-              c.categoryId || null,
-              JSON.stringify(c.checklist || []),
-              JSON.stringify(c.activities || []),
-              c.image || null,
-              JSON.stringify(c.services || []),
-              userId,
-              c.isArchived || false,
-              c.completedAt || null,
-              c.linkedPartnerId || null,
-              c.assigneeId || null
-            ]);
-        } else {
-          // Thẻ thuộc quyền sở hữu của người khác: thực hiện UPDATE nếu được quyền hạn
-          await client.query(`UPDATE cards SET 
-            title = $1, description = $2, tags = $3, start_date = $4, due_date = $5, 
-            estimated_duration = $6, category_id = $7, checklist = $8, activities = $9, 
-            image = $10, services = $11, is_archived = $12, completed_at = $13, 
-            linked_partner_id = $14, assignee_id = $15 
-            WHERE id = $16 
-              AND (
-                user_id = $17 
-                OR assignee_id = $17 
-                OR user_id IN (SELECT member_id FROM team_members WHERE owner_id = $17 AND status = 'active')
-              )`, [
-              c.title,
-              c.description || '',
-              JSON.stringify(c.tags || []),
-              c.startDate || '',
-              c.dueDate || '',
-              c.estimatedDuration || 0,
-              c.categoryId || null,
-              JSON.stringify(c.checklist || []),
-              JSON.stringify(c.activities || []),
-              c.image || null,
-              JSON.stringify(c.services || []),
-              c.isArchived || false,
-              c.completedAt || null,
-              c.linkedPartnerId || null,
-              c.assigneeId || null,
-              c.id,
-              userId
-            ]);
+      // 2. Cập nhật Columns
+      await client.query('DELETE FROM columns WHERE user_id = $1', [userId]);
+      if (Array.isArray(columns)) {
+        for (const col of columns) {
+          await client.query('INSERT INTO columns (id, title, color, card_ids, is_partner, user_id) VALUES ($1, $2, $3, $4, 0, $5)', [
+            col.id, col.title, col.color || null, JSON.stringify(col.cardIds || []), userId
+          ]);
+        }
+      }
+      if (Array.isArray(partnerColumns)) {
+        for (const col of partnerColumns) {
+          await client.query('INSERT INTO columns (id, title, color, card_ids, is_partner, user_id) VALUES ($1, $2, $3, $4, 1, $5)', [
+            col.id, col.title, col.color || null, JSON.stringify(col.cardIds || []), userId
+          ]);
+        }
+      }
+
+      // 4. Cập nhật Settings
+      await client.query('DELETE FROM settings WHERE user_id = $1', [userId]);
+      if (settings && typeof settings === 'object') {
+        for (const [key, val] of Object.entries(settings)) {
+          await client.query('INSERT INTO settings (key, value, user_id) VALUES ($1, $2, $3)', [
+            key, JSON.stringify(val), userId
+          ]);
         }
       }
     }
 
+    // 3. Đồng bộ hóa Cards & Xử lý luồng chuyển giao (Delegation)
+    // Bản đồ mapping thẻ -> cột
+    const cardToColumnMap = {};
+    if (Array.isArray(columns)) {
+      for (const col of columns) {
+        if (Array.isArray(col.cardIds)) {
+          for (const cid of col.cardIds) {
+            cardToColumnMap[cid] = col.id;
+          }
+        }
+      }
+    }
+    if (Array.isArray(partnerColumns)) {
+      for (const col of partnerColumns) {
+        if (Array.isArray(col.cardIds)) {
+          for (const cid of col.cardIds) {
+            cardToColumnMap[cid] = col.id;
+          }
+        }
+      }
+    }
 
-    // 4. Cập nhật Settings
-    await client.query('DELETE FROM settings WHERE user_id = $1', [userId]);
-    if (settings && typeof settings === 'object') {
-      for (const [key, val] of Object.entries(settings)) {
-        await client.query('INSERT INTO settings (key, value, user_id) VALUES ($1, $2, $3)', [
-          key, JSON.stringify(val), userId
-        ]);
+    // Lấy cột đầu tiên làm cột mặc định nhận việc (uncategorized)
+    const firstColRes = await client.query('SELECT id FROM columns WHERE user_id = $1 AND is_partner = 0 LIMIT 1', [boardOwnerId]);
+    const defaultColId = firstColRes.rowCount > 0 ? firstColRes.rows[0].id : 'col-1';
+
+    // Xóa thẻ bị loại bỏ
+    const incomingIds = Array.isArray(cards) ? cards.map(c => c.id) : [];
+    if (!managerId) {
+      // Manager/Cá nhân: xóa thẻ thuộc chính họ hoặc thuộc thành viên hoạt động mà không có trong incomingIds
+      if (incomingIds.length > 0) {
+        await client.query(`
+          DELETE FROM cards 
+          WHERE (user_id = $1 OR user_id IN (SELECT member_id FROM team_members WHERE owner_id = $1 AND status = 'active'))
+            AND id NOT IN (SELECT unnest($2::varchar[]))
+        `, [userId, incomingIds]);
+      } else {
+        await client.query(`
+          DELETE FROM cards 
+          WHERE user_id = $1 OR user_id IN (SELECT member_id FROM team_members WHERE owner_id = $1 AND status = 'active')
+        `, [userId]);
+      }
+    } else {
+      // Thành viên nhóm: chỉ xóa thẻ thuộc chính họ
+      if (incomingIds.length > 0) {
+        await client.query(`
+          DELETE FROM cards 
+          WHERE user_id = $1 AND id NOT IN (SELECT unnest($2::varchar[]))
+        `, [userId, incomingIds]);
+      } else {
+        await client.query(`
+          DELETE FROM cards 
+          WHERE user_id = $1
+        `, [userId]);
+      }
+    }
+
+    // Lưu / Cập nhật thẻ
+    if (Array.isArray(cards) && cards.length > 0) {
+      for (const c of cards) {
+        let targetColId = cardToColumnMap[c.id];
+        if (!targetColId && c.completedAt) {
+          targetColId = 'col-4';
+        }
+        if (!targetColId) {
+          targetColId = c.columnId || defaultColId;
+        }
+
+        if (!c.userId || c.userId === userId) {
+          // Thẻ thuộc sở hữu của chính user hiện tại
+          await client.query(`
+            INSERT INTO cards 
+              (id, title, description, tags, start_date, due_date, estimated_duration, category_id, checklist, activities, image, services, user_id, is_archived, completed_at, linked_partner_id, assignee_id, column_id) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+            ON CONFLICT (id, user_id) 
+            DO UPDATE SET
+              title = EXCLUDED.title,
+              description = EXCLUDED.description,
+              tags = EXCLUDED.tags,
+              start_date = EXCLUDED.start_date,
+              due_date = EXCLUDED.due_date,
+              estimated_duration = EXCLUDED.estimated_duration,
+              category_id = EXCLUDED.category_id,
+              checklist = EXCLUDED.checklist,
+              activities = EXCLUDED.activities,
+              image = EXCLUDED.image,
+              services = EXCLUDED.services,
+              is_archived = EXCLUDED.is_archived,
+              completed_at = EXCLUDED.completed_at,
+              linked_partner_id = EXCLUDED.linked_partner_id,
+              assignee_id = EXCLUDED.assignee_id,
+              column_id = EXCLUDED.column_id
+          `, [
+            c.id, c.title, c.description || '', JSON.stringify(c.tags || []), c.startDate || '', c.dueDate || '',
+            c.estimatedDuration || 0, c.categoryId || null, JSON.stringify(c.checklist || []), JSON.stringify(c.activities || []),
+            c.image || null, JSON.stringify(c.services || []), userId, c.isArchived || false, c.completedAt || null,
+            c.linkedPartnerId || null, c.assigneeId || null, targetColId
+          ]);
+        } else {
+          // Chuyển giao công việc (gán việc cho người khác)
+          // Đổi user_id = c.userId (ID của người nhận việc), category_id = null, column_id = defaultColId
+          await client.query(`
+            UPDATE cards SET 
+              title = $1, description = $2, tags = $3, start_date = $4, due_date = $5, 
+              estimated_duration = $6, category_id = null, checklist = $7, activities = $8, 
+              image = $9, services = $10, is_archived = $11, completed_at = $12, 
+              linked_partner_id = $13, assignee_id = $14, column_id = $15, user_id = $16
+            WHERE id = $17 AND (user_id = $18 OR assignee_id = $18)
+          `, [
+            c.title, c.description || '', JSON.stringify(c.tags || []), c.startDate || '', c.dueDate || '',
+            c.estimatedDuration || 0, JSON.stringify(c.checklist || []), JSON.stringify(c.activities || []),
+            c.image || null, JSON.stringify(c.services || []), c.isArchived || false, c.completedAt || null,
+            c.linkedPartnerId || null, c.assigneeId || null, defaultColId, c.userId, c.id, userId
+          ]);
+        }
       }
     }
 
@@ -1424,9 +1566,7 @@ app.post('/api/board/sync', authenticateToken, async (req, res) => {
     if (client) {
       try {
         await client.query('ROLLBACK');
-      } catch (e) {
-        // Bỏ qua nếu rollback lỗi do chưa BEGIN
-      }
+      } catch (e) {}
       client.release();
     }
     res.status(500).json({ error: 'Lỗi đồng bộ Postgres: ' + err.message });

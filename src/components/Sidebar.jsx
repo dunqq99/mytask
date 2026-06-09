@@ -62,7 +62,8 @@ export default function Sidebar({
   onUpgradeClick,
   onLogout,
   teamSubTab = 'overview',
-  setTeamSubTab
+  setTeamSubTab,
+  isManager = false
 }) {
   const [isAddingRoot, setIsAddingRoot] = useState(false);
   const [rootTitle, setRootTitle] = useState('');
@@ -324,6 +325,32 @@ export default function Sidebar({
                 <span className="sidebar-item-text">Thống kê Công việc</span>
               </div>
             </div>
+
+            {isManager && (
+              <>
+                <div 
+                  className={`sidebar-item ${dashboardSubTab === 'team-performance' ? 'active' : ''}`}
+                  onClick={() => setDashboardSubTab('team-performance')}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="sidebar-item-content">
+                    <Activity size={16} />
+                    <span className="sidebar-item-text">Hiệu suất Đội nhóm</span>
+                  </div>
+                </div>
+
+                <div 
+                  className={`sidebar-item ${dashboardSubTab === 'bot-notifications' ? 'active' : ''}`}
+                  onClick={() => setDashboardSubTab('bot-notifications')}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="sidebar-item-content">
+                    <Database size={16} />
+                    <span className="sidebar-item-text">Cấu hình Bot thông báo</span>
+                  </div>
+                </div>
+              </>
+            )}
 
             <div 
               className={`sidebar-item ${dashboardSubTab === 'partners' ? 'active' : ''}`}

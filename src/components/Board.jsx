@@ -4,6 +4,17 @@ import Column from './Column';
 
 const PRESET_COLORS = ['#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#ef4444', '#10b981'];
 
+// Helper to get local date string YYYY-MM-DD from any ISO date string
+const getLocalDateString = (dateStr) => {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr.split('T')[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dayPart = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dayPart}`;
+};
+
 export default function Board({
   columns,
   cards,
@@ -49,7 +60,7 @@ export default function Board({
       {columns.map(col => {
         // Filter cards that belong to this column (dynamically filter completed tasks by selected completed date)
         const columnCards = col.id === 'col-4'
-          ? cards.filter(c => c.completedAt && c.completedAt.split('T')[0] === selectedCompletedDate)
+          ? cards.filter(c => c.completedAt && getLocalDateString(c.completedAt) === selectedCompletedDate)
           : col.cardIds
               .map(id => cards.find(c => c.id === id))
               .filter(Boolean);

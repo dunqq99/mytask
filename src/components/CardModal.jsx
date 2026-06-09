@@ -72,7 +72,8 @@ export default function CardModal({
   isReadOnly = false,
   userPlan = 'free',
   planFeatures = null,
-  workspaceMembers = []
+  workspaceMembers = [],
+  currentUsername = ''
 }) {
   const currentFeatures = React.useMemo(() => {
     const DEFAULT_PLAN_FEATURES = {
@@ -274,6 +275,54 @@ export default function CardModal({
   const saveField = (field, value) => {
     if (!card) return;
     onUpdateCard(card.id, columnId, { ...card, [field]: value });
+  };
+
+  const handleAssigneeChange = (newAssigneeId) => {
+    if (!card) return;
+    
+    const prevAssigneeId = card.assigneeId || '';
+    const newAssigneeIdStr = newAssigneeId || '';
+    
+    if (prevAssigneeId === newAssigneeIdStr) return;
+
+    const prevMember = workspaceMembers.find(m => m.id === prevAssigneeId);
+    const newMember = workspaceMembers.find(m => m.id === newAssigneeIdStr);
+    
+    const prevAssigneeName = prevMember ? prevMember.username : 'Chưa phân công';
+    const newAssigneeName = newMember ? newMember.username : 'Chưa phân công';
+    const assignerName = currentUsername || 'Hệ thống';
+    
+    let logText = '';
+    if (!newAssigneeIdStr) {
+      logText = `Hủy phân công công việc (Người thực hiện cũ: ${prevAssigneeName}) bởi ${assignerName}`;
+    } else if (!prevAssigneeId) {
+      logText = `Phân công công việc cho ${newAssigneeName} bởi ${assignerName}`;
+    } else {
+      logText = `Chuyển giao công việc từ ${prevAssigneeName} sang ${newAssigneeName} bởi ${assignerName}`;
+    }
+    
+    const timestamp = new Date().toLocaleString('vi-VN');
+    const newActivity = {
+      id: `act-assign-${Date.now()}`,
+      timestamp,
+      text: logText
+    };
+    
+    const updatedActivities = [newActivity, ...(card.activities || [])];
+    
+    const updatedCard = {
+      ...card,
+      assigneeId: newAssigneeId || null,
+      activities: updatedActivities
+    };
+    
+    if (newAssigneeId && newAssigneeId !== card.userId) {
+      updatedCard.userId = newAssigneeId;
+      updatedCard.categoryId = null; // Chưa phân loại
+    }
+    
+    setAssigneeId(newAssigneeId || '');
+    onUpdateCard(card.id, columnId, updatedCard);
   };
 
   // Các hàm quản lý dịch vụ đối tác
@@ -1089,8 +1138,7 @@ export default function CardModal({
                   value={assigneeId}
                   onChange={(e) => {
                     const val = e.target.value || null;
-                    setAssigneeId(val || '');
-                    saveField('assigneeId', val);
+                    handleAssigneeChange(val);
                   }}
                   style={{
                     width: '100%',

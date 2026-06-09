@@ -40,10 +40,121 @@ export default function Dashboard({
   syncErrorMessage = '',
   onSyncNow,
   userPlan = 'free',
-  planFeatures = null
+  planFeatures = null,
+  workspaceMembers = [],
+  currentUserId = '',
+  isManager = false,
+  API_BASE_URL = ''
 }) {
   const [timePeriod, setTimePeriod] = useState('all'); // 'all', 'day', 'week', 'month'
   const [customDate, setCustomDate] = useState(() => new Date().toLocaleDateString('en-CA'));
+
+  // Collapsed states for team performance member cards
+  const [expandedMemberId, setExpandedMemberId] = useState(null);
+
+  // VPS and Client system clocks
+  const [vpsTimeInfo, setVpsTimeInfo] = useState({ time: 'Đang tải...', timezone: 'Đang tải...' });
+  const [clientTime, setClientTime] = useState(() => new Date());
+
+  useEffect(() => {
+    const fetchVpsTime = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL || ''}/api/system-time`);
+        if (res.ok) {
+          const data = await res.json();
+          setVpsTimeInfo(data);
+        }
+      } catch (err) {
+        setVpsTimeInfo({ time: 'Lỗi kết nối VPS', timezone: 'Không rõ' });
+      }
+    };
+    fetchVpsTime();
+
+    const timer = setInterval(() => {
+      setClientTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [API_BASE_URL]);
+
+  // Bot configuration state
+  const [botConfig, setBotConfig] = useState(() => {
+    try {
+      const saved = localStorage.getItem('zenboard_bot_notifications_config');
+      return saved ? JSON.parse(saved) : {
+        enabled: false,
+        platform: 'discord',
+        webhookUrl: '',
+        chatId: ''
+      };
+    } catch {
+      return {
+        enabled: false,
+        platform: 'discord',
+        webhookUrl: '',
+        chatId: ''
+      };
+    }
+  });
+
+  const [botTestStatus, setBotTestStatus] = useState('idle'); // 'idle', 'sending', 'success', 'error'
+
+  const handleSaveBotConfig = () => {
+    localStorage.setItem('zenboard_bot_notifications_config', JSON.stringify(botConfig));
+    alert('Đã lưu cấu hình Bot thông báo thành công!');
+  };
+
+  const handleTestBotConfig = async () => {
+    if (!botConfig.webhookUrl) {
+      alert('Vui lòng điền Webhook URL trước khi thử nghiệm.');
+      return;
+    }
+    setBotTestStatus('sending');
+    try {
+      let response;
+      const testMsg = `Kiểm tra kết nối Bot thông báo của ZenBoard thành công! 🤖`;
+      if (botConfig.platform === 'discord') {
+        response = await fetch(botConfig.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: `🔔 **[ZenBoard]** ${testMsg}` })
+        });
+      } else if (botConfig.platform === 'telegram') {
+        let url = botConfig.webhookUrl;
+        if (botConfig.chatId && !url.includes('chat_id') && !url.includes('sendMessage')) {
+          const tokenMatch = url.match(/bot([a-zA-Z0-9:_]+)/);
+          const token = tokenMatch ? tokenMatch[1] : '';
+          if (token) {
+            url = `https://api.telegram.org/bot${token}/sendMessage`;
+          }
+        }
+        response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: botConfig.chatId || '',
+            text: `🔔 [ZenBoard] ${testMsg}`
+          })
+        });
+      } else {
+        response = await fetch(botConfig.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: testMsg })
+        });
+      }
+      if (response.ok) {
+        setBotTestStatus('success');
+        setTimeout(() => setBotTestStatus('idle'), 3000);
+      } else {
+        throw new Error(`Server returned status ${response.status}`);
+      }
+    } catch (err) {
+      console.error(err);
+      setBotTestStatus('error');
+      alert('Gửi tin nhắn thử nghiệm thất bại: ' + err.message);
+      setTimeout(() => setBotTestStatus('idle'), 3000);
+    }
+  };
 
   const hasSheetsSync = useMemo(() => {
     const DEFAULT_PLAN_FEATURES = {
@@ -110,6 +221,73 @@ export default function Dashboard({
   // 3. Filter Task Cards by Period
   // 4. Task Completed IDs list
   const completedTaskIds = useMemo(() => columns.find(col => col.id === 'col-4')?.cardIds || [], [columns]);
+
+  // Group and compute stats for each team member
+  const teamPerformanceStats = useMemo(() => {
+    if (!workspaceMembers || workspaceMembers.length === 0) return [];
+    
+    return workspaceMembers.map(member => {
+      // Find cards assigned to this member OR owned by them (prioritize assignee)
+      const memberCards = cards.filter(card => {
+        const handlerId = card.assigneeId || card.userId;
+        return handlerId === member.id && !checkIsCardPartner(card);
+      });
+
+      const completed = memberCards.filter(c => c.completedAt || c.isArchived || c.columnId === 'col-4' || completedTaskIds.includes(c.id));
+      const pending = memberCards.filter(c => !(c.completedAt || c.isArchived || c.columnId === 'col-4' || completedTaskIds.includes(c.id)));
+      
+      const overdue = pending.filter(c => {
+        if (!c.dueDate) return false;
+        const due = parseLocalDate(c.dueDate);
+        return due ? due < todayDateObj : false;
+      });
+
+      const totalCount = memberCards.length;
+      const completedCount = completed.length;
+      const pendingCount = pending.length;
+      const completionRate = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+      
+      // Calculate work efficiency score (0 - 100)
+      let efficiency = completionRate;
+      if (pendingCount > 0) {
+        efficiency -= Math.round((overdue.length / pendingCount) * 30);
+      }
+      if (completedCount > 0) {
+        efficiency += Math.round(completedCount * 2);
+      }
+      efficiency = Math.min(100, Math.max(0, efficiency));
+
+      // Get rating title
+      let ratingTitle = 'Cần cố gắng ⚠️';
+      let ratingColor = 'var(--danger)';
+      if (efficiency >= 85) {
+        ratingTitle = 'Xuất sắc 🏆';
+        ratingColor = 'var(--success)';
+      } else if (efficiency >= 70) {
+        ratingTitle = 'Tốt 👍';
+        ratingColor = '#3b82f6';
+      } else if (efficiency >= 50) {
+        ratingTitle = 'Đạt yêu cầu ⚡';
+        ratingColor = 'var(--warning)';
+      }
+
+      return {
+        id: member.id,
+        username: member.username,
+        roleName: member.roleName || member.role || 'Thành viên',
+        totalCount,
+        completedCount,
+        pendingCount,
+        overdueCount: overdue.length,
+        completionRate,
+        efficiency,
+        ratingTitle,
+        ratingColor,
+        completedList: completed,
+        pendingList: pending
+      };
+    });
+  }, [workspaceMembers, cards, completedTaskIds, checkIsCardPartner, columns, todayDateObj]);
 
   // 3. Filter Task Cards by Period
   const filteredTaskCards = useMemo(() => {
@@ -270,7 +448,41 @@ export default function Dashboard({
   const strokeDashoffset = circumference - (taskCompletionRate / 100) * circumference;
 
   return (
-    <div className="dashboard-view">
+    <div className="dashboard-view" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* System Time Status Banner */}
+      <div 
+        className="glass" 
+        style={{ 
+          padding: '12px 20px', 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
+          background: 'rgba(255,255,255,0.02)',
+          border: '1px solid var(--border-glass)',
+          borderRadius: '8px',
+          fontSize: '12.5px',
+          color: 'var(--text-secondary)'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--success)', boxShadow: '0 0 8px var(--success)' }} />
+          <span>Thời gian thiết bị của bạn:</span>
+          <strong style={{ color: 'var(--text-primary)' }}>
+            {clientTime.toLocaleString('vi-VN')}
+          </strong>
+          <span style={{ color: 'var(--text-muted)' }}>({Intl.DateTimeFormat().resolvedOptions().timeZone})</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#3b82f6', boxShadow: '0 0 8px #3b82f6' }} />
+          <span>Thời gian máy chủ VPS:</span>
+          <strong style={{ color: 'var(--text-primary)' }}>
+            {vpsTimeInfo.time}
+          </strong>
+          <span style={{ color: 'var(--text-muted)' }}>({vpsTimeInfo.timezone})</span>
+        </div>
+      </div>
 
       {/* Task Statistics Section */}
       {activeSubTab === 'tasks' && (
@@ -1014,6 +1226,361 @@ export default function Dashboard({
 
           </div>
 
+        </div>
+      )}
+
+      {/* Team Performance Sub-tab */}
+      {activeSubTab === 'team-performance' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div className="glass" style={{ padding: '24px' }}>
+            <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: 'var(--text-primary)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Users size={20} style={{ color: 'var(--primary)' }} />
+              Bảng Hiệu suất và Tiến độ Công việc Đội nhóm
+            </h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: '0 0 20px 0' }}>
+              Xem tiến độ làm việc, danh sách các tác vụ đã hoàn thành, đang thực hiện và điểm hiệu suất của từng thành viên trong tổ đội.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {teamPerformanceStats.map(member => {
+                const isExpanded = expandedMemberId === member.id;
+                return (
+                  <div 
+                    key={member.id} 
+                    className="glass" 
+                    style={{ 
+                      borderRadius: '10px', 
+                      overflow: 'hidden', 
+                      border: '1px solid var(--border-glass)',
+                      background: 'var(--bg-glass-column)',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    {/* Header Row */}
+                    <div 
+                      onClick={() => setExpandedMemberId(isExpanded ? null : member.id)}
+                      style={{ 
+                        padding: '16px 20px', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between', 
+                        cursor: 'pointer',
+                        background: isExpanded ? 'rgba(255, 255, 255, 0.03)' : 'transparent',
+                        borderBottom: isExpanded ? '1px solid var(--border-glass)' : 'none'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                        <div style={{ 
+                          width: '40px', 
+                          height: '40px', 
+                          borderRadius: '50%', 
+                          background: 'linear-gradient(135deg, var(--primary), var(--secondary))',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 'bold',
+                          color: '#ffffff',
+                          fontSize: '16px'
+                        }}>
+                          {member.username.substring(0, 2).toUpperCase()}
+                        </div>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontWeight: 'bold', fontSize: '15px', color: 'var(--text-primary)' }}>{member.username}</span>
+                            <span style={{ 
+                              padding: '2px 8px', 
+                              borderRadius: '12px', 
+                              fontSize: '11px', 
+                              fontWeight: '500',
+                              background: member.id === currentUserId ? 'rgba(245, 158, 11, 0.15)' : 'rgba(255, 255, 255, 0.08)',
+                              color: member.id === currentUserId ? '#f59e0b' : 'var(--text-secondary)'
+                            }}>
+                              {member.roleName}
+                            </span>
+                          </div>
+                          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                            Hiệu suất làm việc: <strong style={{ color: member.ratingColor }}>{member.ratingTitle} ({member.efficiency}%)</strong>
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Summary Metrics */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                        <div style={{ textAlign: 'right', display: 'flex', gap: '16px' }} className="hide-mobile">
+                          <div style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Tác vụ</div>
+                            <div style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>{member.totalCount}</div>
+                          </div>
+                          <div style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: '11px', color: 'var(--success)' }}>Xong</div>
+                            <div style={{ fontWeight: 'bold', color: 'var(--success)' }}>{member.completedCount}</div>
+                          </div>
+                          <div style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: '11px', color: 'var(--warning)' }}>Đang treo</div>
+                            <div style={{ fontWeight: 'bold', color: 'var(--warning)' }}>{member.pendingCount}</div>
+                          </div>
+                        </div>
+
+                        {/* Collapsible toggle arrow */}
+                        <div style={{ color: 'var(--text-secondary)' }}>
+                          {isExpanded ? '▲' : '▼'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Collapsible Content */}
+                    {isExpanded && (
+                      <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                        {/* Progress Bar */}
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', fontSize: '12.5px' }}>
+                            <span style={{ color: 'var(--text-secondary)' }}>Tỷ lệ hoàn thành công việc:</span>
+                            <span style={{ fontWeight: 'bold', color: 'var(--primary)' }}>{member.completionRate}%</span>
+                          </div>
+                          <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: '4px', overflow: 'hidden' }}>
+                            <div style={{ width: `${member.completionRate}%`, height: '100%', background: 'linear-gradient(90deg, var(--primary), var(--secondary))', borderRadius: '4px' }} />
+                          </div>
+                        </div>
+
+                        {/* Tasks lists split */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+                          
+                          {/* Pending tasks */}
+                          <div className="glass" style={{ padding: '16px', background: 'rgba(0,0,0,0.1)' }}>
+                            <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 12px 0', fontSize: '13.5px', fontWeight: 'bold', color: 'var(--warning)' }}>
+                              <ListTodo size={16} />
+                              Đang còn treo ở Kanban ({member.pendingCount})
+                            </h4>
+                            {member.pendingList.length === 0 ? (
+                              <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic', padding: '8px 0' }}>
+                                Không có tác vụ nào đang treo.
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '250px', overflowY: 'auto', paddingRight: '4px' }}>
+                                {member.pendingList.map(task => {
+                                  const isOverdue = task.dueDate && parseLocalDate(task.dueDate) < todayDateObj;
+                                  return (
+                                    <div 
+                                      key={task.id} 
+                                      className="glass" 
+                                      style={{ 
+                                        padding: '10px 12px', 
+                                        fontSize: '12.5px', 
+                                        borderRadius: '6px', 
+                                        borderLeft: isOverdue ? '3px solid var(--danger)' : '3px solid var(--warning)',
+                                        background: 'rgba(255,255,255,0.02)'
+                                      }}
+                                    >
+                                      <div style={{ fontWeight: '500', color: 'var(--text-primary)', marginBottom: '4px' }}>{task.title}</div>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)' }}>
+                                        <span>Cột: {columns.find(col => col.id === task.columnId)?.title || task.columnId || 'Chưa phân loại'}</span>
+                                        {task.dueDate && (
+                                          <span style={{ color: isOverdue ? 'var(--danger)' : 'var(--text-muted)' }}>
+                                            Hạn: {task.dueDate} {isOverdue && '(Trễ hạn! ⚠️)'}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Completed tasks */}
+                          <div className="glass" style={{ padding: '16px', background: 'rgba(0,0,0,0.1)' }}>
+                            <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 12px 0', fontSize: '13.5px', fontWeight: 'bold', color: 'var(--success)' }}>
+                              <CheckCircle2 size={16} />
+                              Đã hoàn thành gần đây ({member.completedCount})
+                            </h4>
+                            {member.completedList.length === 0 ? (
+                              <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic', padding: '8px 0' }}>
+                                Chưa hoàn thành tác vụ nào.
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '250px', overflowY: 'auto', paddingRight: '4px' }}>
+                                {member.completedList.map(task => (
+                                  <div 
+                                    key={task.id} 
+                                    className="glass" 
+                                    style={{ 
+                                      padding: '10px 12px', 
+                                      fontSize: '12.5px', 
+                                      borderRadius: '6px', 
+                                      borderLeft: '3px solid var(--success)',
+                                      background: 'rgba(255,255,255,0.02)'
+                                    }}
+                                  >
+                                    <div style={{ fontWeight: '500', color: 'var(--text-primary)', marginBottom: '4px' }}>{task.title}</div>
+                                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                      Xong lúc: {task.completedAt ? new Date(task.completedAt).toLocaleString('vi-VN') : 'N/A'}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Bot Notification Configuration Sub-tab */}
+      {activeSubTab === 'bot-notifications' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div className="glass" style={{ padding: '24px' }}>
+            <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: 'var(--text-primary)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Database size={20} style={{ color: 'var(--primary)' }} />
+              Cấu hình Bot thông báo hội nhóm (Telegram / Discord)
+            </h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: '0 0 20px 0' }}>
+              Liên kết ZenBoard với nhóm trò chuyện của bạn để tự động gửi thông báo khi có công việc mới được tạo, hoàn thành hoặc chuyển giao giữa các thành viên.
+            </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+              {/* Form Config */}
+              <div className="glass" style={{ padding: '20px' }}>
+                <h3 className="chart-header" style={{ marginBottom: '16px' }}>Cài đặt Kết nối</h3>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  
+                  {/* Enabled Toggle */}
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', userSelect: 'none' }}>
+                    <input
+                      type="checkbox"
+                      checked={botConfig.enabled}
+                      onChange={(e) => setBotConfig({ ...botConfig, enabled: e.target.checked })}
+                      style={{ width: '18px', height: '18px', accentColor: 'var(--primary)', cursor: 'pointer' }}
+                    />
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontSize: '13.5px', fontWeight: 'bold', color: 'var(--text-primary)' }}>Kích hoạt gửi thông báo tự động</span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Bật để bắt đầu gửi thông báo khi có sự kiện</span>
+                    </div>
+                  </label>
+
+                  {/* Platform selection */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-secondary)' }}>Nền tảng nhắn tin:</label>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <button 
+                        type="button"
+                        className={`btn ${botConfig.platform === 'discord' ? 'btn-primary' : 'btn-secondary'}`}
+                        style={{ flex: 1, padding: '10px', justifyContent: 'center' }}
+                        onClick={() => setBotConfig({ ...botConfig, platform: 'discord' })}
+                      >
+                        Discord Webhook
+                      </button>
+                      <button 
+                        type="button"
+                        className={`btn ${botConfig.platform === 'telegram' ? 'btn-primary' : 'btn-secondary'}`}
+                        style={{ flex: 1, padding: '10px', justifyContent: 'center' }}
+                        onClick={() => setBotConfig({ ...botConfig, platform: 'telegram' })}
+                      >
+                        Telegram Bot
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Webhook URL Input */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-secondary)' }}>
+                      {botConfig.platform === 'discord' ? 'Discord Webhook URL:' : 'Telegram API URL / Webhook URL:'}
+                    </label>
+                    <input
+                      type="text"
+                      className="search-input"
+                      style={{ width: '100%', padding: '10px 12px', fontSize: '13px' }}
+                      placeholder={botConfig.platform === 'discord' 
+                        ? "https://discord.com/api/webhooks/..." 
+                        : "https://api.telegram.org/bot<TOKEN>/sendMessage"
+                      }
+                      value={botConfig.webhookUrl}
+                      onChange={(e) => setBotConfig({ ...botConfig, webhookUrl: e.target.value.trim() })}
+                    />
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                      {botConfig.platform === 'discord'
+                        ? "Lấy URL này trong Cài đặt kênh Discord -> Tích hợp -> Webhooks."
+                        : "URL API gửi tin nhắn của Telegram Bot."
+                      }
+                    </span>
+                  </div>
+
+                  {/* Chat ID Input (Telegram only) */}
+                  {botConfig.platform === 'telegram' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <label style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-secondary)' }}>Chat ID (Telegram):</label>
+                      <input
+                        type="text"
+                        className="search-input"
+                        style={{ width: '100%', padding: '10px 12px', fontSize: '13px' }}
+                        placeholder="-100xxxxxxxxx"
+                        value={botConfig.chatId || ''}
+                        onChange={(e) => setBotConfig({ ...botConfig, chatId: e.target.value.trim() })}
+                      />
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                        ID của nhóm trò chuyện Telegram nhận thông báo (ví dụ: số bắt đầu bằng dấu trừ).
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+                    <button 
+                      type="button" 
+                      className="btn btn-primary"
+                      style={{ flex: 1, padding: '10px', justifyContent: 'center' }}
+                      onClick={handleSaveBotConfig}
+                    >
+                      Lưu cấu hình
+                    </button>
+                    <button 
+                      type="button" 
+                      className="btn btn-secondary"
+                      style={{ padding: '10px', width: '120px', justifyContent: 'center' }}
+                      onClick={handleTestBotConfig}
+                      disabled={botTestStatus === 'sending'}
+                    >
+                      {botTestStatus === 'sending' ? 'Đang gửi...' : 'Gửi thử 🤖'}
+                    </button>
+                  </div>
+
+                </div>
+              </div>
+
+              {/* Guide Card */}
+              <div className="glass" style={{ padding: '20px' }}>
+                <h3 className="chart-header" style={{ marginBottom: '12px' }}>Hướng dẫn tích hợp nhanh</h3>
+                <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '14px', lineHeight: 1.5 }}>
+                  <div>
+                    <strong style={{ color: 'var(--text-primary)' }}>1. Hướng dẫn Discord Webhook:</strong>
+                    <ol style={{ margin: '6px 0 0 16px', padding: 0 }}>
+                      <li>Truy cập Server Discord của bạn.</li>
+                      <li>Click chuột phải vào kênh muốn gửi &rarr; <strong>Chỉnh sửa kênh</strong> &rarr; <strong>Tích hợp</strong> &rarr; <strong>Webhooks</strong>.</li>
+                      <li>Tạo Webhook mới, copy URL của nó dán vào ô bên trái.</li>
+                    </ol>
+                  </div>
+                  <div>
+                    <strong style={{ color: 'var(--text-primary)' }}>2. Hướng dẫn Telegram Bot:</strong>
+                    <ol style={{ margin: '6px 0 0 16px', padding: 0 }}>
+                      <li>Chat với <strong>@BotFather</strong> trên Telegram để tạo Bot mới và lấy <strong>Bot Token</strong>.</li>
+                      <li>Thêm Bot vừa tạo vào nhóm trò chuyện của bạn và set quyền Admin gửi tin nhắn cho Bot.</li>
+                      <li>Lấy Chat ID của nhóm (chat với @raw_data_bot hoặc đưa link bot kiểm tra ID).</li>
+                      <li>Nhập URL dạng: <code>https://api.telegram.org/bot&lt;TOKEN&gt;/sendMessage</code> và Chat ID tương ứng để kết nối.</li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
         </div>
       )}
     </div>

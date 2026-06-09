@@ -30,6 +30,17 @@ import Planner from './components/Planner';
 import LoginRegister from './components/LoginRegister';
 import UsersManager from './components/UsersManager';
 
+// Helper to get local date string YYYY-MM-DD from any ISO date string
+const getLocalDateString = (dateStr) => {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr.split('T')[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dayPart = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dayPart}`;
+};
+
 // Available tag list for reference
 const AVAILABLE_TAGS = [
   { key: 'high', bg: '#fef2f2', text: '#ef4444', label: 'Khẩn cấp' },
@@ -320,6 +331,9 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard'); // 'board', 'planner', 'partners' or 'dashboard'
   const [userId, setUserId] = useState('');
   const [workspaceMembers, setWorkspaceMembers] = useState([]);
+
+  const isTeamMember = plan !== 'free' && workspaceMembers.some(m => m.id === userId && m.role !== 'MNG');
+  const isManager = plan !== 'free' && !isTeamMember;
 
   useEffect(() => {
     if (!token) return;
@@ -614,7 +628,7 @@ export default function App() {
 
           const updatedCards = loadedCards.map(card => {
             if (card.completedAt && !card.isArchived) {
-              const completedDateStr = card.completedAt.split('T')[0]; // YYYY-MM-DD
+              const completedDateStr = getLocalDateString(card.completedAt); // YYYY-MM-DD (local)
               if (completedDateStr < todayStr) {
                 hasArchiveUpdates = true;
                 return { ...card, isArchived: true };
@@ -1193,6 +1207,51 @@ export default function App() {
     ));
   };
 
+  // Bot Webhook Notification Helper
+  const triggerBotNotification = async (eventText) => {
+    try {
+      const configStr = localStorage.getItem('zenboard_bot_notifications_config');
+      if (!configStr) return;
+      const config = JSON.parse(configStr);
+      if (!config.enabled || !config.webhookUrl) return;
+
+      console.log('ZenBoard Bot Notification:', eventText);
+
+      if (config.platform === 'discord') {
+        await fetch(config.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: `🔔 **[ZenBoard]** ${eventText}` })
+        });
+      } else if (config.platform === 'telegram') {
+        let url = config.webhookUrl;
+        if (config.chatId && !url.includes('chat_id') && !url.includes('sendMessage')) {
+          const tokenMatch = url.match(/bot([a-zA-Z0-9:_]+)/);
+          const token = tokenMatch ? tokenMatch[1] : '';
+          if (token) {
+            url = `https://api.telegram.org/bot${token}/sendMessage`;
+          }
+        }
+        await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: config.chatId || '',
+            text: `🔔 [ZenBoard] ${eventText}`
+          })
+        });
+      } else {
+        await fetch(config.webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: eventText })
+        });
+      }
+    } catch (err) {
+      console.warn('Bot notification error:', err.message);
+    }
+  };
+
   // Add Card to Column
   const handleAddCard = (colId) => {
     const cardLimit = getPlanFeature('cardLimit');
@@ -1204,7 +1263,6 @@ export default function App() {
     const newCardId = `card-${now.getTime()}`;
     const newCard = {
       id: newCardId,
-
       title: isPartnerActive ? 'Đối tác mới' : 'Công việc mới',
       description: '',
       tags: [],
@@ -1217,13 +1275,13 @@ export default function App() {
       completedAt: null
     };
 
-
     setCards([newCard, ...cards]);
     setCurrentColumns(currentColumns.map(col => 
       col.id === colId ? { ...col, cardIds: [newCardId, ...col.cardIds] } : col
     ));
 
     setSelectedCardInfo({ card: newCard, columnId: colId });
+    triggerBotNotification(`Công việc mới được tạo: "${newCard.title}" bởi ${username}`);
   };
 
   // Delete Card
@@ -1237,9 +1295,45 @@ export default function App() {
 
   // Update Card detail
   const handleUpdateCard = (cardId, colId, updatedCard) => {
+    const originalCard = cards.find(c => c.id === cardId);
+    
+    // Check if ownership is transferred (userId changed)
+    if (originalCard && updatedCard.userId && updatedCard.userId !== originalCard.userId) {
+      // If the card was owned by the current user, remove it from columns
+      if (originalCard.userId === userId || !originalCard.userId) {
+        const isPartner = checkIsCardPartner(originalCard);
+        if (isPartner) {
+          setPartnerColumns(prevCols => 
+            prevCols.map(col => ({
+              ...col,
+              cardIds: col.cardIds.filter(id => id !== cardId)
+            }))
+          );
+        } else {
+          setColumns(prevCols => 
+            prevCols.map(col => ({
+              ...col,
+              cardIds: col.cardIds.filter(id => id !== cardId)
+            }))
+          );
+        }
+      }
+    }
+
     setCards(cards.map(c => c.id === cardId ? updatedCard : c));
     if (selectedCardInfo && selectedCardInfo.card.id === cardId) {
       setSelectedCardInfo({ card: updatedCard, columnId: colId });
+    }
+
+    // Trigger Bot Webhook Notifications on events
+    if (originalCard && updatedCard) {
+      if (updatedCard.completedAt && !originalCard.completedAt) {
+        triggerBotNotification(`Công việc "${updatedCard.title}" đã được HOÀN THÀNH bởi ${username}!`);
+      } else if (updatedCard.userId && updatedCard.userId !== originalCard.userId) {
+        const assigneeMember = workspaceMembers.find(m => m.id === updatedCard.userId);
+        const assigneeName = assigneeMember ? assigneeMember.username : updatedCard.userId;
+        triggerBotNotification(`Công việc "${updatedCard.title}" đã được chuyển giao cho ${assigneeName} bởi ${username}`);
+      }
     }
   };
 
@@ -1682,6 +1776,7 @@ export default function App() {
           onLogout={handleLogout}
           teamSubTab={teamSubTab}
           setTeamSubTab={setTeamSubTab}
+          isManager={isManager}
         />
 
         {/* Board / Dashboard Content Area */}
@@ -1811,7 +1906,7 @@ export default function App() {
                 onDragEnd={handleDragEnd}
                 onDragOverCard={handleDragOverCard}
                 onDropCard={handleDropCard}
-                columnCustomization={getPlanFeature('columnCustomization')}
+                columnCustomization={getPlanFeature('columnCustomization') && !isTeamMember}
                 userPlan={plan}
                 onUpgradeClick={() => setShowUpgradeModal(true)}
                 availableTags={isPartnerActive ? partnerTags : tags}
@@ -1870,6 +1965,10 @@ export default function App() {
               onSyncNow={() => handleSyncToGoogleSheets(cards, categories)}
               userPlan={plan}
               planFeatures={planFeatures}
+              workspaceMembers={workspaceMembers}
+              currentUserId={userId}
+              isManager={isManager}
+              API_BASE_URL={API_BASE_URL}
             />
           )}
         </div>
@@ -1902,6 +2001,7 @@ export default function App() {
             userPlan={plan}
             planFeatures={planFeatures}
             workspaceMembers={workspaceMembers}
+            currentUsername={username}
           />
         );
       })()}

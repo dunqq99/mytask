@@ -194,7 +194,7 @@ export default function Column({
             <ChevronsLeft size={16} />
           </button>
           
-          {!isCompletedColumn && (
+          {!isCompletedColumn && columnCustomization && (
             <div style={{ position: 'relative' }} ref={menuRef}>
               <button className="column-menu-btn" onClick={() => setShowMenu(!showMenu)}>
                 <MoreHorizontal size={18} />
