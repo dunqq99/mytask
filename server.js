@@ -286,6 +286,7 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
       } catch (initErr) {
         console.error('[Database Init Error] Không thể tự động tạo tài khoản mặc định:', initErr.message);
         try { await client.query('ROLLBACK'); } catch (e) {}
+      }
       // Tự động tạo các tài khoản doanh nghiệp mẫu nếu chưa tồn tại
       try {
         const sampleUsers = [
