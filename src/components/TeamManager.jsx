@@ -89,6 +89,32 @@ export default function TeamManager({
     }
   };
 
+  // Update member team role
+  const handleUpdateRole = async (memberId, role) => {
+    setError('');
+    setSuccess('');
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/team/update-role`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ memberId, role })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Không thể cập nhật vai trò đội nhóm.');
+      }
+
+      setSuccess(`Đã cập nhật vai trò thành viên thành công.`);
+      fetchTeamData(); // Reload list
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   // Remove member handler
   const handleRemoveMember = async (memberId, memberUsername) => {
     if (!confirm(`Bạn chắc chắn muốn xóa "${memberUsername}" khỏi đội nhóm của mình? Các tác vụ đã giao cho họ vẫn sẽ được giữ lại.`)) return;
@@ -205,10 +231,27 @@ export default function TeamManager({
                     border: '1px solid rgba(255, 255, 255, 0.05)',
                     background: 'rgba(255, 255, 255, 0.01)'
                   }}>
-                    <div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                       <div style={{ fontSize: '13.5px', fontWeight: '600' }}>{m.username}</div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'capitalize' }}>
-                        Vai trò: {m.role}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                        <span>Vai trò tổ đội:</span>
+                        <select
+                          value={m.role || 'StaffVH'}
+                          onChange={(e) => handleUpdateRole(m.id, e.target.value)}
+                          style={{
+                            padding: '2px 6px',
+                            fontSize: '11.5px',
+                            borderRadius: '4px',
+                            background: 'rgba(255,255,255,0.05)',
+                            border: '1px solid var(--border-glass)',
+                            color: 'var(--text-primary)',
+                            cursor: 'pointer',
+                            outline: 'none'
+                          }}
+                        >
+                          <option value="StaffVH" style={{ background: '#18181b', color: '#fff' }}>Nhân viên Vận hành</option>
+                          <option value="StaffMKT" style={{ background: '#18181b', color: '#fff' }}>Nhân viên Marketing</option>
+                        </select>
                       </div>
                     </div>
                     <button

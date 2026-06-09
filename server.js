@@ -186,6 +186,7 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
         member_id VARCHAR(50) NOT NULL,
         PRIMARY KEY (owner_id, member_id)
       )`);
+      await client.query(`ALTER TABLE team_members ADD COLUMN IF NOT EXISTS team_role VARCHAR(50) DEFAULT 'StaffVH'`);
 
       // Thay đổi Primary Key các bảng thành khóa phức hợp (id, user_id) cho hệ thống nhiều tài khoản
       try {
@@ -285,6 +286,52 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
       } catch (initErr) {
         console.error('[Database Init Error] Không thể tự động tạo tài khoản mặc định:', initErr.message);
         try { await client.query('ROLLBACK'); } catch (e) {}
+      // Tự động tạo các tài khoản doanh nghiệp mẫu nếu chưa tồn tại
+      try {
+        const sampleUsers = [
+          { id: 'usr-mng1', username: 'mng1', role: 'editor', plan: 'enterprise' },
+          { id: 'usr-mkt1', username: 'mkt1', role: 'editor', plan: 'enterprise' },
+          { id: 'usr-vh1', username: 'vh1', role: 'editor', plan: 'enterprise' },
+          { id: 'usr-vh2', username: 'vh2', role: 'editor', plan: 'enterprise' },
+          { id: 'usr-vh3', username: 'vh3', role: 'editor', plan: 'enterprise' }
+        ];
+
+        for (const u of sampleUsers) {
+          const userCheck = await client.query('SELECT id FROM users WHERE username = $1', [u.username]);
+          if (userCheck.rowCount === 0) {
+            console.log(`[Database Init] Tự động tạo tài khoản mẫu "${u.username}"...`);
+            const pwdHash = hashPassword('123456');
+            await client.query(
+              'INSERT INTO users (id, username, password, role, plan) VALUES ($1, $2, $3, $4, $5)',
+              [u.id, u.username, pwdHash, u.role, u.plan]
+            );
+          } else {
+            // Đảm bảo gói dịch vụ và role hệ thống của các user này luôn là enterprise / editor
+            await client.query('UPDATE users SET role = $1, plan = $2 WHERE username = $3', [u.role, u.plan, u.username]);
+          }
+        }
+
+        // Tạo mối quan hệ nhóm (mng1 là owner, các thành viên khác là member)
+        const ownerId = 'usr-mng1';
+        const membersToLink = [
+          { id: 'usr-mkt1', teamRole: 'StaffMKT' },
+          { id: 'usr-vh1', teamRole: 'StaffVH' },
+          { id: 'usr-vh2', teamRole: 'StaffVH' },
+          { id: 'usr-vh3', teamRole: 'StaffVH' }
+        ];
+
+        for (const m of membersToLink) {
+          await client.query(
+            `INSERT INTO team_members (owner_id, member_id, team_role) 
+             VALUES ($1, $2, $3) 
+             ON CONFLICT (owner_id, member_id) 
+             DO UPDATE SET team_role = EXCLUDED.team_role`,
+            [ownerId, m.id, m.teamRole]
+          );
+        }
+        console.log('[Database Init] Đã khởi tạo và seed dữ liệu tổ đội mẫu cho doanh nghiệp thành công!');
+      } catch (seedErr) {
+        console.error('[Database Init Error] Lỗi seed tài khoản mẫu doanh nghiệp:', seedErr.message);
       }
 
       console.log('[PostgreSQL] Đã khởi tạo cấu trúc bảng dữ liệu thành công!');
@@ -909,44 +956,59 @@ app.get('/api/workspace/members', authenticateToken, async (req, res) => {
   try {
     client = await pool.connect();
 
-    // Lấy role hiện tại của người dùng đăng nhập
-    const userRoleRes = await client.query('SELECT role FROM users WHERE id = $1', [userId]);
-    const userRole = userRoleRes.rows[0]?.role || 'editor';
-    
-    // Tải thông tin của:
-    // 1. Bản thân user
-    // 2. Các thành viên do user mời (Đội nhóm của tôi)
-    // 3. Các trưởng nhóm của các nhóm user đã tham gia
-    // 4. Các thành viên khác cùng thuộc các nhóm user đã tham gia (fellow members)
-    const membersRes = await client.query(`
-      SELECT id, username, role FROM users WHERE id = $1
-      UNION
-      SELECT u.id, u.username, u.role FROM users u
-      JOIN team_members tm ON tm.member_id = u.id
-      WHERE tm.owner_id = $1
-      UNION
-      SELECT u.id, u.username, u.role FROM users u
-      JOIN team_members tm ON tm.owner_id = u.id
-      WHERE tm.member_id = $1
-      UNION
-      SELECT u.id, u.username, u.role FROM users u
-      JOIN team_members tm ON tm.member_id = u.id
-      WHERE tm.owner_id IN (SELECT owner_id FROM team_members WHERE member_id = $1)
-    `, [userId]);
-    
-    let finalMembers = membersRes.rows;
-
-    // StaffVH: chỉ được giao việc lại cho nhau (StaffVH) hoặc đẩy sang cho StaffMKT
-    if (userRole === 'StaffVH') {
-      finalMembers = finalMembers.filter(m => 
-        m.id === userId || 
-        m.role === 'StaffVH' || 
-        m.role === 'StaffMKT'
-      );
+    // 1. Xác định Manager ID của đội nhóm (nếu đang là thành viên của ai đó thì lấy ID người đó, ngược lại là chính mình)
+    let managerId = userId;
+    const joinedRes = await client.query('SELECT owner_id FROM team_members WHERE member_id = $1 LIMIT 1', [userId]);
+    if (joinedRes.rowCount > 0) {
+      managerId = joinedRes.rows[0].owner_id;
     }
     
+    // 2. Xác định vai trò tổ đội (RolesTeam) của user hiện tại
+    let userTeamRole = 'StaffVH';
+    if (userId === managerId) {
+      userTeamRole = 'MNG';
+    } else {
+      const roleRes = await client.query('SELECT team_role FROM team_members WHERE owner_id = $1 AND member_id = $2', [managerId, userId]);
+      if (roleRes.rowCount > 0) {
+        userTeamRole = roleRes.rows[0].team_role || 'StaffVH';
+      }
+    }
+
+    // 3. Lấy thông tin Trưởng nhóm (managerId)
+    const managerRes = await client.query('SELECT id, username FROM users WHERE id = $1', [managerId]);
+    // Lấy thông tin các thành viên trong nhóm
+    const membersRes = await client.query(`
+      SELECT u.id, u.username, tm.team_role FROM users u
+      JOIN team_members tm ON tm.member_id = u.id
+      WHERE tm.owner_id = $1
+    `, [managerId]);
+
+    const finalMembers = [];
+    if (managerRes.rowCount > 0) {
+      finalMembers.push({
+        id: managerRes.rows[0].id,
+        username: managerRes.rows[0].username,
+        role: 'MNG'
+      });
+    }
+
+    for (const row of membersRes.rows) {
+      finalMembers.push({
+        id: row.id,
+        username: row.username,
+        role: row.team_role || 'StaffVH'
+      });
+    }
+
+    // 4. Lọc thành viên có thể giao việc dựa trên vai trò đội nhóm của user đang đăng nhập
+    let filteredMembers = finalMembers;
+    if (userTeamRole === 'StaffVH' || userTeamRole === 'StaffMKT') {
+      // StaffVH và StaffMKT không thể phân công công việc cho Trưởng nhóm (MNG)
+      filteredMembers = finalMembers.filter(m => m.role !== 'MNG');
+    }
+
     client.release();
-    res.json(finalMembers);
+    res.json(filteredMembers);
   } catch (err) {
     if (client) client.release();
     res.status(500).json({ error: err.message });
@@ -962,9 +1024,9 @@ app.get('/api/team', authenticateToken, async (req, res) => {
   try {
     client = await pool.connect();
     
-    // Thành viên do tôi mời
+    // Thành viên do tôi mời (lấy vai trò đội nhóm tm.team_role)
     const membersRes = await client.query(`
-      SELECT u.id, u.username, u.role FROM users u
+      SELECT u.id, u.username, tm.team_role AS "role" FROM users u
       JOIN team_members tm ON tm.member_id = u.id
       WHERE tm.owner_id = $1
     `, [userId]);
@@ -1014,15 +1076,59 @@ app.post('/api/team/invite', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Bạn không thể tự mời chính mình vào nhóm.' });
     }
     
-    // Lưu vào bảng team_members
+    // Lưu vào bảng team_members với team_role mặc định là StaffVH
     await client.query(`
-      INSERT INTO team_members (owner_id, member_id)
-      VALUES ($1, $2)
+      INSERT INTO team_members (owner_id, member_id, team_role)
+      VALUES ($1, $2, 'StaffVH')
       ON CONFLICT (owner_id, member_id) DO NOTHING
     `, [userId, targetUserId]);
     
     client.release();
     res.json({ success: true, message: 'Đã mời thành viên vào nhóm thành công!' });
+  } catch (err) {
+    if (client) client.release();
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API Cập nhật vai trò đội nhóm của thành viên (Chỉ Trưởng nhóm mới có quyền)
+app.post('/api/team/update-role', authenticateToken, async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database chưa kết nối.' });
+  const userId = req.user.id;
+  const { memberId, role } = req.body;
+  
+  if (!memberId || !role) {
+    return res.status(400).json({ error: 'Thiếu thông tin thành viên hoặc vai trò.' });
+  }
+  
+  const validRoles = ['StaffMKT', 'StaffVH'];
+  if (!validRoles.includes(role)) {
+    return res.status(400).json({ error: 'Vai trò đội nhóm không hợp lệ.' });
+  }
+  
+  let client;
+  try {
+    client = await pool.connect();
+    
+    // Kiểm tra xem memberId có phải là thành viên trong nhóm của userId không
+    const checkRes = await client.query(
+      'SELECT 1 FROM team_members WHERE owner_id = $1 AND member_id = $2',
+      [userId, memberId]
+    );
+    
+    if (checkRes.rowCount === 0) {
+      client.release();
+      return res.status(403).json({ error: 'Bạn không có quyền thay đổi vai trò của thành viên này.' });
+    }
+    
+    // Cập nhật vai trò đội nhóm
+    await client.query(
+      'UPDATE team_members SET team_role = $1 WHERE owner_id = $2 AND member_id = $3',
+      [role, userId, memberId]
+    );
+    
+    client.release();
+    res.json({ success: true, message: 'Đã cập nhật vai trò đội nhóm thành công!' });
   } catch (err) {
     if (client) client.release();
     res.status(500).json({ error: err.message });
