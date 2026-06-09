@@ -1368,6 +1368,10 @@ export default function App() {
   // Filter Cards based on search query, tags, and category selection
   const getFilteredCards = () => {
     return cards.filter(card => {
+      // Chỉ hiển thị công việc thuộc sở hữu của người dùng hiện tại hoặc chưa gán cho ai
+      const belongsToCurrentUser = !card.userId || card.userId === userId;
+      if (!belongsToCurrentUser) return false;
+
       // 1. Search Query filter (title or description)
       const matchesSearch = 
         card.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -1413,18 +1417,20 @@ export default function App() {
   // Task Counts for Sidebar badges
   const getTaskCounts = () => {
     const counts = {};
+    const myCards = cards.filter(c => !c.userId || c.userId === userId);
+
     if (isPartnerActive) {
-      counts['all'] = cards.filter(c => checkIsCardPartner(c)).length;
-      counts['uncategorized'] = cards.filter(c => c.categoryId === partnerRootId).length;
+      counts['all'] = myCards.filter(c => checkIsCardPartner(c)).length;
+      counts['uncategorized'] = myCards.filter(c => c.categoryId === partnerRootId).length;
     } else {
-      counts['all'] = cards.filter(c => !checkIsCardPartner(c)).length;
-      counts['uncategorized'] = cards.filter(c => !c.categoryId || !categories.some(cat => cat.id === c.categoryId)).length;
+      counts['all'] = myCards.filter(c => !checkIsCardPartner(c)).length;
+      counts['uncategorized'] = myCards.filter(c => !c.categoryId || !categories.some(cat => cat.id === c.categoryId)).length;
     }
 
     categories.forEach(cat => {
       const descendants = getDescendantIds(cat.id, categories);
       const allowedIds = [cat.id, ...descendants];
-      counts[cat.id] = cards.filter(c => allowedIds.includes(c.categoryId)).length;
+      counts[cat.id] = myCards.filter(c => allowedIds.includes(c.categoryId)).length;
     });
 
     return counts;
@@ -1920,7 +1926,7 @@ export default function App() {
             </>
           ) : activeTab === 'planner' ? (
             <Planner
-              cards={cards}
+              cards={cards.filter(c => !c.userId || c.userId === userId)}
               categories={categories}
               columns={columns}
               todaySchedule={todaySchedule}
