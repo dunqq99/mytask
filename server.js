@@ -177,6 +177,7 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
       await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS services TEXT`);
       await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE`);
       await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS completed_at VARCHAR(50)`);
+      await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS linked_partner_id VARCHAR(50)`);
 
       // Thay đổi Primary Key các bảng thành khóa phức hợp (id, user_id) cho hệ thống nhiều tài khoản
       try {
@@ -681,7 +682,7 @@ app.get('/api/board', authenticateToken, async (req, res) => {
     });
 
     // 3. Tải Cards
-    const cardRes = await client.query('SELECT id, title, description, tags, start_date AS "startDate", due_date AS "dueDate", estimated_duration AS "estimatedDuration", category_id AS "categoryId", checklist, activities, image, services, is_archived AS "isArchived", completed_at AS "completedAt" FROM cards WHERE user_id = $1', [userId]);
+    const cardRes = await client.query('SELECT id, title, description, tags, start_date AS "startDate", due_date AS "dueDate", estimated_duration AS "estimatedDuration", category_id AS "categoryId", checklist, activities, image, services, is_archived AS "isArchived", completed_at AS "completedAt", linked_partner_id AS "linkedPartnerId" FROM cards WHERE user_id = $1', [userId]);
     data.cards = cardRes.rows.map(c => ({
       id: c.id,
       title: c.title,
@@ -696,7 +697,8 @@ app.get('/api/board', authenticateToken, async (req, res) => {
       image: c.image || null,
       services: JSON.parse(c.services || '[]'),
       isArchived: !!c.isArchived,
-      completedAt: c.completedAt || null
+      completedAt: c.completedAt || null,
+      linkedPartnerId: c.linkedPartnerId || null
     }));
 
 
@@ -790,8 +792,8 @@ app.post('/api/board/sync', authenticateToken, async (req, res) => {
     if (Array.isArray(cards) && cards.length > 0) {
       for (const c of cards) {
         await client.query(`INSERT INTO cards 
-          (id, title, description, tags, start_date, due_date, estimated_duration, category_id, checklist, activities, image, services, user_id, is_archived, completed_at) 
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`, [
+          (id, title, description, tags, start_date, due_date, estimated_duration, category_id, checklist, activities, image, services, user_id, is_archived, completed_at, linked_partner_id) 
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`, [
             c.id,
             c.title,
             c.description || '',
@@ -806,7 +808,8 @@ app.post('/api/board/sync', authenticateToken, async (req, res) => {
             JSON.stringify(c.services || []),
             userId,
             c.isArchived || false,
-            c.completedAt || null
+            c.completedAt || null,
+            c.linkedPartnerId || null
           ]);
       }
     }

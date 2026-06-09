@@ -17,12 +17,30 @@ const TAG_COLORS = {
   service: { bg: '#fffbeb', text: '#d97706', label: 'Dịch vụ' }
 };
 
-export default function Card({ card, columnId, columnColor, categories = [], onCardClick, onDragStart, onDragEnd, onDragOverCard, availableTags = [] }) {
-  const { id, title, description, tags = [], dueDate, startDate, checklist = [], image, categoryId, estimatedDuration, services = [] } = card;
+export default function Card({ card, columnId, columnColor, categories = [], onCardClick, onDragStart, onDragEnd, onDragOverCard, availableTags = [], allCards = [], isViewingToday = true }) {
+  const { id, title, description, tags = [], dueDate, startDate, checklist = [], image, categoryId, estimatedDuration, services = [], linkedPartnerId } = card;
   
   // Find partner root category ID dynamically
   const partnerRootCat = categories.find(c => !c.parentId && c.name.includes('Đối tác'));
   const partnerRootId = partnerRootCat ? partnerRootCat.id : 'cat-4';
+
+  const checkIsCardPartner = (c) => {
+    if (!c.categoryId) return false;
+    if (c.categoryId === partnerRootId) return true;
+    let currentId = c.categoryId;
+    let limit = 10;
+    while (currentId && limit > 0) {
+      const cat = categories.find(catItem => catItem.id === currentId);
+      if (!cat) break;
+      if (cat.parentId === partnerRootId) return true;
+      currentId = cat.parentId;
+      limit--;
+    }
+    return false;
+  };
+
+  const isCardPartner = checkIsCardPartner(card);
+  const linkedPartner = (linkedPartnerId && allCards) ? allCards.find(c => c.id === linkedPartnerId) : null;
 
   // Suppress category badge if it's the partner root category
   const category = (categoryId && categoryId !== partnerRootId) ? categories.find(c => c.id === categoryId) : null;
@@ -75,6 +93,13 @@ export default function Card({ card, columnId, columnColor, categories = [], onC
       return date.toLocaleDateString('vi-VN', { day: 'numeric', month: 'numeric' });
     };
 
+    if (isCardPartner) {
+      if (startDate) {
+        return `Bắt đầu: ${formatDate(startDate)} >> Hôm nay`;
+      }
+      return 'Bắt đầu: Hôm nay';
+    }
+
     if (startDate && dueDate) {
       return `${formatDate(startDate)} - ${formatDate(dueDate)}`;
     }
@@ -104,7 +129,7 @@ export default function Card({ card, columnId, columnColor, categories = [], onC
   return (
     <div
       className="task-card"
-      draggable
+      draggable={!(columnId === 'col-4' && !isViewingToday)}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragOver={handleDragOver}
@@ -117,12 +142,21 @@ export default function Card({ card, columnId, columnColor, categories = [], onC
       )}
 
       {/* Category & Tags Header */}
-      {(category || tags.length > 0) && (
+      {(category || tags.length > 0 || linkedPartner) && (
         <div className="card-tags" style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
           {category && (
             <span className="card-category-badge" title={`Danh mục: ${category.name}`}>
               <Folder size={10} />
               <span>{category.name}</span>
+            </span>
+          )}
+          {linkedPartner && (
+            <span 
+              className="card-category-badge" 
+              title={`Đối tác liên kết: ${linkedPartner.title}`}
+              style={{ background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.2)', color: '#3b82f6' }}
+            >
+              <span>🤝 {linkedPartner.title}</span>
             </span>
           )}
           {tags.map(tagKey => {
@@ -149,28 +183,54 @@ export default function Card({ card, columnId, columnColor, categories = [], onC
         <p className="card-desc-preview">{description}</p>
       )}
 
-      {/* Hiển thị tổng giá trị hợp tác đối tác (nếu có dịch vụ) */}
-      {services && services.length > 0 && (
-        <div style={{ 
-          marginTop: '4px', 
-          marginBottom: '8px', 
-          display: 'inline-flex', 
-          alignItems: 'center', 
-          gap: '4px',
-          padding: '3px 8px',
-          background: 'rgba(16, 185, 129, 0.08)',
-          border: '1px solid rgba(16, 185, 129, 0.2)',
-          color: '#10b981',
-          borderRadius: '4px',
+      {/* Hiển thị tóm tắt dịch vụ & giá trị hợp tác đối tác */}
+      {isCardPartner && services && services.length > 0 && (
+        <div style={{
+          marginTop: '6px',
+          marginBottom: '8px',
+          padding: '6px 8px',
+          background: 'rgba(16, 185, 129, 0.03)',
+          border: '1px solid rgba(16, 185, 129, 0.15)',
+          borderRadius: '6px',
           fontSize: '11px',
-          fontWeight: 'bold'
+          color: 'var(--text-secondary)'
         }}>
-          <span>💰 Hợp tác: </span>
-          <span>
-            {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(
-              services.reduce((sum, srv) => sum + srv.price, 0)
-            )}
-          </span>
+          <div style={{ fontWeight: '600', color: 'var(--text-primary)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span>💼 Gói dịch vụ:</span>
+          </div>
+          <ul style={{ margin: 0, paddingLeft: '14px', listStyleType: 'disc' }}>
+            {services.map(srv => {
+              const customFieldsStr = srv.customFields && srv.customFields.length > 0
+                ? ` (${srv.customFields.map(f => `${f.key}: ${f.value}`).join(', ')})`
+                : '';
+              const formattedPrice = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(srv.price);
+              return (
+                <li key={srv.id} style={{ marginBottom: '2px', wordBreak: 'break-word' }}>
+                  <span style={{ fontWeight: '500', color: 'var(--text-primary)' }}>{srv.name}</span>
+                  {customFieldsStr}
+                  <span style={{ color: '#10b981', marginLeft: '4px', fontWeight: 'bold' }}>: {formattedPrice}</span>
+                </li>
+              );
+            })}
+          </ul>
+          <div style={{ 
+            marginTop: '6px', 
+            paddingTop: '6px', 
+            borderTop: '1px solid rgba(16, 185, 129, 0.15)', 
+            display: 'flex', 
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            fontSize: '11px',
+            fontWeight: 'bold',
+            color: '#10b981'
+          }}>
+            <span>Tổng hợp tác:</span>
+            <span>
+              {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(
+                services.reduce((sum, srv) => sum + srv.price, 0)
+              )}
+            </span>
+          </div>
         </div>
       )}
 

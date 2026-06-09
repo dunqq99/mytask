@@ -13,7 +13,8 @@ import {
   Lock,
   Unlock,
   Plus,
-  Settings
+  Settings,
+  Users
 } from 'lucide-react';
 
 
@@ -65,6 +66,7 @@ export default function CardModal({
   categories = [],
   availableTags = AVAILABLE_TAGS,
   onUpdateAvailableTags = () => {},
+  allPartnerCards = [],
   isPartner = false,
   partnerRootId = 'cat-4',
   isReadOnly = false,
@@ -96,6 +98,7 @@ export default function CardModal({
   const [dueDate, setDueDate] = useState('');
   const [tags, setTags] = useState([]);
   const [categoryId, setCategoryId] = useState('');
+  const [linkedPartnerId, setLinkedPartnerId] = useState('');
   const [estimatedDuration, setEstimatedDuration] = useState(0);
 
   // Cấu hình danh sách dịch vụ cho đối tác
@@ -183,6 +186,7 @@ export default function CardModal({
       setDueDate(card.dueDate || '');
       setTags(card.tags || []);
       setCategoryId(card.categoryId || '');
+      setLinkedPartnerId(card.linkedPartnerId || '');
       setEstimatedDuration(card.estimatedDuration || 0);
       setServices(card.services || []);
       setDescTab('edit'); // Reset to edit tab when card changes
@@ -913,6 +917,33 @@ export default function CardModal({
                 ))}
               </select>
             </div>
+
+            {/* Đối tác liên kết Selection (Only for Tasks) */}
+            {!isPartner && (
+              <div className="sidebar-section" style={{ marginBottom: '16px' }}>
+                <div className="modal-section-title">
+                  <Users size={14} style={{ marginRight: '4px' }} />
+                  <span>Đối tác liên kết</span>
+                </div>
+                <select
+                  className="meta-select"
+                  value={linkedPartnerId || ''}
+                  onChange={(e) => {
+                    const val = e.target.value || '';
+                    setLinkedPartnerId(val);
+                    saveField('linkedPartnerId', val || null);
+                  }}
+                  disabled={effectiveReadOnly}
+                >
+                  <option value="">(Không liên kết đối tác)</option>
+                  {allPartnerCards.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Tags Selection */}
             <div className="sidebar-section" style={{ marginBottom: '16px' }}>

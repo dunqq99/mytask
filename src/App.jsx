@@ -306,6 +306,9 @@ export default function App() {
     );
   };
 
+  const [selectedCompletedDate, setSelectedCompletedDate] = useState(() => new Date().toLocaleDateString('en-CA'));
+  const isViewingToday = selectedCompletedDate === new Date().toLocaleDateString('en-CA');
+
   const [activeTab, setActiveTab] = useState('dashboard'); // 'board', 'planner', 'partners' or 'dashboard'
   const [dashboardSubTab, setDashboardSubTab] = useState('tasks'); // 'tasks' or 'partners'
   const [adminSubTab, setAdminSubTab] = useState('members'); // 'members', 'roles', 'plans', 'data'
@@ -797,6 +800,12 @@ export default function App() {
 
     const card = cards.find(c => c.id === cardId);
     if (!card) return;
+
+    // 0. Prevent history modification for past dates
+    if ((targetColId === 'col-4' || actualSourceColId === 'col-4') && !isViewingToday) {
+      alert('Bạn chỉ có thể hoàn thành hoặc mở lại công việc ở ngày hiện tại!');
+      return;
+    }
 
     // 1. Validation when dragging to Completed ('col-4')
     if (targetColId === 'col-4') {
@@ -1544,6 +1553,30 @@ export default function App() {
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
                   </div>
+
+                  {!isPartnerActive && (
+                    <div className="search-input-wrapper" style={{ marginLeft: '12px', display: 'flex', alignItems: 'center' }}>
+                      <CalendarDays size={14} style={{ marginRight: '6px' }} />
+                      <span style={{ fontSize: '11.5px', fontWeight: 'bold', color: 'var(--text-secondary)', marginRight: '6px' }}>
+                        Hoàn thành ngày:
+                      </span>
+                      <input
+                        type="date"
+                        className="search-input"
+                        style={{ 
+                          padding: '2px 6px', 
+                          fontSize: '11.5px', 
+                          border: 'none', 
+                          background: 'transparent',
+                          color: 'var(--text-primary)',
+                          outline: 'none',
+                          cursor: 'pointer'
+                        }}
+                        value={selectedCompletedDate}
+                        onChange={(e) => setSelectedCompletedDate(e.target.value || new Date().toLocaleDateString('en-CA'))}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Filters */}
@@ -1587,6 +1620,7 @@ export default function App() {
               <Board
                 columns={currentColumns}
                 cards={filteredCards}
+                allCards={cards}
                 categories={categories}
                 collapsedColIds={collapsedColIds}
                 onToggleCollapseColumn={handleToggleCollapseColumn}
@@ -1604,6 +1638,8 @@ export default function App() {
                 userPlan={plan}
                 onUpgradeClick={() => setShowUpgradeModal(true)}
                 availableTags={isPartnerActive ? partnerTags : tags}
+                selectedCompletedDate={selectedCompletedDate}
+                isViewingToday={isViewingToday}
               />
             </>
           ) : activeTab === 'planner' ? (
@@ -1671,6 +1707,8 @@ export default function App() {
               .map(c => c.parentId === partnerRootId ? { ...c, parentId: null } : c)
           : categories.filter(c => c.id !== partnerRootId && !checkIsCardPartner({ categoryId: c.id }));
 
+        const allPartnerCards = cards.filter(c => checkIsCardPartner(c));
+
         return (
           <CardModal
             card={selectedCardInfo.card}
@@ -1681,6 +1719,7 @@ export default function App() {
             categories={modalCategories}
             availableTags={isCardPartner ? partnerTags : tags}
             onUpdateAvailableTags={(newTags, deletedTagKey) => handleUpdateAvailableTags(newTags, deletedTagKey, isCardPartner)}
+            allPartnerCards={allPartnerCards}
             isPartner={isCardPartner}
             partnerRootId={partnerRootId}
             userPlan={plan}

@@ -23,7 +23,10 @@ export default function Board({
   columnCustomization = true,
   userPlan = 'free',
   onUpgradeClick = () => {},
-  availableTags = []
+  availableTags = [],
+  allCards = [],
+  selectedCompletedDate = new Date().toLocaleDateString('en-CA'),
+  isViewingToday = true
 }) {
   const [isAddingColumn, setIsAddingColumn] = useState(false);
   const [newColumnTitle, setNewColumnTitle] = useState('');
@@ -43,16 +46,19 @@ export default function Board({
     <div className="board-container">
       {/* Render Columns */}
       {columns.map(col => {
-        // Filter cards that belong to this column
-        const columnCards = col.cardIds
-          .map(id => cards.find(c => c.id === id))
-          .filter(Boolean);
+        // Filter cards that belong to this column (dynamically filter completed tasks by selected completed date)
+        const columnCards = col.id === 'col-4'
+          ? cards.filter(c => c.completedAt && c.completedAt.split('T')[0] === selectedCompletedDate)
+          : col.cardIds
+              .map(id => cards.find(c => c.id === id))
+              .filter(Boolean);
 
         return (
           <Column
             key={col.id}
             column={col}
             cards={columnCards}
+            allCards={allCards}
             categories={categories}
             isCollapsed={collapsedColIds.includes(col.id)}
             onToggleCollapse={() => onToggleCollapseColumn(col.id)}
@@ -67,6 +73,7 @@ export default function Board({
             onDropCard={onDropCard}
             columnCustomization={columnCustomization}
             availableTags={availableTags}
+            isViewingToday={isViewingToday}
           />
         );
       })}

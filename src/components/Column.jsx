@@ -22,6 +22,8 @@ export default function Column({
   columnCustomization = true,
   userPlan = 'free',
   availableTags = [],
+  allCards = [],
+  isViewingToday = true
 }) {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState(column.title);
@@ -97,6 +99,12 @@ export default function Column({
       const dataStr = e.dataTransfer.getData('text/plain');
       if (!dataStr) return;
       const { cardId, sourceColumnId } = JSON.parse(dataStr);
+
+      if (column.id === 'col-4' && !isViewingToday) {
+        alert('Bạn chỉ có thể hoàn thành hoặc mở lại công việc ở ngày hiện tại!');
+        return;
+      }
+
       onDropCard(cardId, sourceColumnId, column.id);
     } catch (err) {
       console.error('Lỗi khi drop thẻ:', err);
@@ -164,6 +172,11 @@ export default function Column({
                 style={{ cursor: isCompletedColumn ? 'default' : 'pointer' }}
               >
                 {column.title}
+                {column.id === 'col-4' && !isViewingToday && (
+                  <span style={{ fontSize: '11px', fontWeight: 'normal', color: 'var(--text-secondary)', marginLeft: '6px', opacity: 0.8 }}>
+                    (Xem lại)
+                  </span>
+                )}
               </h3>
               <span className="column-count">{cards.length}</span>
             </>
@@ -269,20 +282,24 @@ export default function Column({
             columnId={column.id}
             columnColor={column.color}
             categories={categories}
+            allCards={allCards}
             onCardClick={onCardClick}
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
             onDragOverCard={onDragOverCard}
             availableTags={availableTags}
+            isViewingToday={isViewingToday}
           />
         ))}
       </div>
 
       {/* Add Card Button */}
-      <button className="add-card-btn" onClick={() => onAddCard(column.id)}>
-        <Plus size={16} />
-        <span>Thêm công việc</span>
-      </button>
+      {!(column.id === 'col-4' && !isViewingToday) && (
+        <button className="add-card-btn" onClick={() => onAddCard(column.id)}>
+          <Plus size={16} />
+          <span>Thêm công việc</span>
+        </button>
+      )}
     </div>
   );
 }

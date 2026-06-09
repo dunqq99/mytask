@@ -43,6 +43,7 @@ export default function Dashboard({
   planFeatures = null
 }) {
   const [timePeriod, setTimePeriod] = useState('all'); // 'all', 'day', 'week', 'month'
+  const [customDate, setCustomDate] = useState(() => new Date().toLocaleDateString('en-CA'));
 
   const hasSheetsSync = useMemo(() => {
     const DEFAULT_PLAN_FEATURES = {
@@ -126,7 +127,7 @@ export default function Dashboard({
           const compMonth = String(completedDate.getMonth() + 1).padStart(2, '0');
           const compDay = String(completedDate.getDate()).padStart(2, '0');
           const compStr = `${compYear}-${compMonth}-${compDay}`;
-          return compStr === todayStr;
+          return compStr === customDate;
         }
         
         if (timePeriod === 'week') {
@@ -139,7 +140,7 @@ export default function Dashboard({
         if (!card.dueDate) return false;
         
         if (timePeriod === 'day') {
-          return card.dueDate === todayStr;
+          return card.dueDate === customDate;
         }
         
         const due = parseLocalDate(card.dueDate);
@@ -153,7 +154,7 @@ export default function Dashboard({
       }
       return true;
     });
-  }, [taskCards, timePeriod, todayStr, monday, sunday, firstDay, lastDay, completedTaskIds]);
+  }, [taskCards, timePeriod, customDate, monday, sunday, firstDay, lastDay, completedTaskIds]);
 
   const totalTaskCount = filteredTaskCards.length;
   const completedTaskCount = filteredTaskCards.filter(c => completedTaskIds.includes(c.id) || c.isArchived || !!c.completedAt).length;
@@ -276,7 +277,7 @@ export default function Dashboard({
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           
           {/* Time period filter toolbar */}
-          <div className="period-toolbar glass">
+          <div className="period-toolbar glass" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
             <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-secondary)' }}>
               Bộ lọc thời gian:
             </span>
@@ -291,7 +292,7 @@ export default function Dashboard({
                 className={`period-btn ${timePeriod === 'day' ? 'active' : ''}`}
                 onClick={() => setTimePeriod('day')}
               >
-                Hôm nay
+                Theo ngày
               </button>
               <button 
                 className={`period-btn ${timePeriod === 'week' ? 'active' : ''}`}
@@ -306,9 +307,31 @@ export default function Dashboard({
                 Tháng này
               </button>
             </div>
+
+            {timePeriod === 'day' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input
+                  type="date"
+                  className="search-input"
+                  style={{ 
+                    padding: '3px 8px', 
+                    fontSize: '11.5px', 
+                    border: '1px solid var(--border-glass)', 
+                    background: 'var(--bg-glass-column)', 
+                    color: 'var(--text-primary)', 
+                    borderRadius: '4px', 
+                    outline: 'none',
+                    cursor: 'pointer'
+                  }}
+                  value={customDate}
+                  onChange={(e) => setCustomDate(e.target.value || new Date().toLocaleDateString('en-CA'))}
+                />
+              </div>
+            )}
+
             {timePeriod !== 'all' && (
               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                {timePeriod === 'day' && `Ngày: ${todayStr.split('-').reverse().join('/')}`}
+                {timePeriod === 'day' && `Ngày: ${customDate.split('-').reverse().join('/')}`}
                 {timePeriod === 'week' && `Từ ${monday.toLocaleDateString('vi-VN')} đến ${sunday.toLocaleDateString('vi-VN')}`}
                 {timePeriod === 'month' && `Tháng ${new Date().getMonth() + 1}/${new Date().getFullYear()}`}
               </span>
