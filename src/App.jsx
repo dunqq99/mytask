@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   LayoutDashboard, 
   KanbanSquare, 
@@ -551,7 +551,7 @@ export default function App() {
       }
     };
   }, [cards, categories, columns, isAutoSyncEnabled, googleSheetUrl, plan, planFeatures]);
-  useEffect(() => {
+  const loadBoardFromDatabase = useCallback(async () => {
     if (!token) {
       setIsInitialLoaded(true);
       return;
@@ -561,215 +561,215 @@ export default function App() {
       setIsBackendConnected(true);
       return;
     }
-    const loadBoardFromDatabase = async () => {
-      setIsInitialLoaded(false);
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/board`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        if (response.status === 401 || response.status === 403) {
-          handleLogout();
-          return;
+    setIsInitialLoaded(false);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/board`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
         }
-        if (!response.ok) throw new Error('Không thể tải dữ liệu từ máy chủ API.');
-        
-        const data = await response.json();
-        if (data.userId) {
-          setUserId(data.userId);
-        }
-        if (data.userRole) {
-          setRole(data.userRole);
-          localStorage.setItem('zenboard_role', data.userRole);
-        }
-        if (data.userPlan) {
-          setPlan(data.userPlan);
-          localStorage.setItem('zenboard_plan', data.userPlan);
-        }
-        if (data.isTeammate !== undefined) {
-          setIsTeammate(data.isTeammate);
-        }
-        if (data.planFeatures) {
-          setPlanFeatures(data.planFeatures);
-          localStorage.setItem('zenboard_plan_features', JSON.stringify(data.planFeatures));
-        }
-        
-        if (data.categories && data.columns && data.cards) {
-          // Chỉ nạp nếu cơ sở dữ liệu đã có dữ liệu thực tế (tránh nạp trống đè cấu hình)
-          if (data.columns.length > 0 || data.cards.length > 0 || data.categories.length > 0) {
-            let loadedCards = data.cards || [];
-            let loadedColumns = data.columns || [];
-
-            // Auto daily-clearing of completed tasks from previous days
-            const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
-            let hasArchiveUpdates = false;
-
-            const updatedCards = loadedCards.map(card => {
-              if (card.completedAt && !card.isArchived) {
-                const completedDateStr = card.completedAt.split('T')[0]; // YYYY-MM-DD
-                if (completedDateStr < todayStr) {
-                  hasArchiveUpdates = true;
-                  return { ...card, isArchived: true };
-                }
-              }
-              return card;
-            });
-
-            let updatedColumns = loadedColumns;
-            if (hasArchiveUpdates) {
-              const archivedIds = updatedCards.filter(c => c.isArchived).map(c => c.id);
-              updatedColumns = loadedColumns.map(col => {
-                if (col.id === 'col-4') {
-                  return {
-                    ...col,
-                    cardIds: col.cardIds.filter(id => !archivedIds.includes(id))
-                  };
-                }
-                return col;
-              });
-            }
-
-            // Tự động phân bổ các thẻ được giao (nếu chưa nằm trong cột nào của user) vào cột đầu tiên tương ứng
-            const loadedPartnerColumns = data.partnerColumns || [];
-            let updatedPartnerColumns = loadedPartnerColumns;
-
-            const partnerCat = data.categories.find(c => !c.parentId && c.name.includes('Đối tác'));
-            const partnerRootId = partnerCat ? partnerCat.id : 'cat-4';
-            
-            const checkIsCardPartnerLoad = (c) => {
-              if (!c.categoryId) return false;
-              if (c.categoryId === partnerRootId) return true;
-              let currentId = c.categoryId;
-              let limit = 10;
-              while (currentId && limit > 0) {
-                const cat = data.categories.find(catItem => catItem.id === currentId);
-                if (!cat) break;
-                if (cat.parentId === partnerRootId) return true;
-                currentId = cat.parentId;
-                limit--;
-              }
-              return false;
-            };
-
-            const allColumnCardIds = new Set([
-              ...updatedColumns.flatMap(col => col.cardIds || []),
-              ...updatedPartnerColumns.flatMap(col => col.cardIds || [])
-            ]);
-
-            const missingCards = updatedCards.filter(card => !card.isArchived && !allColumnCardIds.has(card.id));
-            const missingRegularCardIds = missingCards.filter(c => !checkIsCardPartnerLoad(c)).map(c => c.id);
-            const missingPartnerCardIds = missingCards.filter(c => checkIsCardPartnerLoad(c)).map(c => c.id);
-
-            if (missingRegularCardIds.length > 0 && updatedColumns.length > 0) {
-              updatedColumns = updatedColumns.map((col, index) => {
-                if (index === 0) {
-                  return {
-                    ...col,
-                    cardIds: [...new Set([...col.cardIds, ...missingRegularCardIds])]
-                  };
-                }
-                return col;
-              });
-            }
-
-            if (missingPartnerCardIds.length > 0 && updatedPartnerColumns.length > 0) {
-              updatedPartnerColumns = updatedPartnerColumns.map((col, index) => {
-                if (index === 0) {
-                  return {
-                    ...col,
-                    cardIds: [...new Set([...col.cardIds, ...missingPartnerCardIds])]
-                  };
-                }
-                return col;
-              });
-            }
-
-            setCategories(data.categories);
-            setColumns(updatedColumns);
-            if (data.partnerColumns) setPartnerColumns(updatedPartnerColumns);
-            setCards(updatedCards);
-            if (data.userRole) {
-
-              setRole(data.userRole);
-              localStorage.setItem('zenboard_role', data.userRole);
-            }
-            if (data.userPlan) {
-              setPlan(data.userPlan);
-              localStorage.setItem('zenboard_plan', data.userPlan);
-            }
-            if (data.planFeatures) {
-              setPlanFeatures(data.planFeatures);
-              localStorage.setItem('zenboard_plan_features', JSON.stringify(data.planFeatures));
-            }
-            
-            if (data.settings) {
-              if (data.settings.todaySchedule) setTodaySchedule(data.settings.todaySchedule);
-              if (data.settings.workdayDuration) setWorkdayDuration(data.settings.workdayDuration);
-              if (data.settings.googleSheetUrl) setGoogleSheetUrl(data.settings.googleSheetUrl);
-              if (data.settings.googleSheetDisplayUrl) setGoogleSheetDisplayUrl(data.settings.googleSheetDisplayUrl);
-              if (data.settings.isAutoSyncEnabled !== undefined) setIsAutoSyncEnabled(data.settings.isAutoSyncEnabled);
-              if (data.settings.lastSyncTime) setLastSyncTime(data.settings.lastSyncTime);
-              if (data.settings.shifts) setShifts(data.settings.shifts);
-              if (data.settings.weeklyShifts) setWeeklyShifts(data.settings.weeklyShifts);
-              if (data.settings.tags) {
-                setTags(data.settings.tags);
-                localStorage.setItem('zenboard_tags', JSON.stringify(data.settings.tags));
-              }
-              if (data.settings.partnerTags) {
-                setPartnerTags(data.settings.partnerTags);
-                localStorage.setItem('zenboard_partner_tags', JSON.stringify(data.settings.partnerTags));
-              }
-            }
-          } else {
-            // Cơ sở dữ liệu rỗng, tiến hành ghi đè dữ liệu mẫu mặc định lên DB
-            console.log('ZenBoard: Database rỗng, đang khởi tạo dữ liệu mẫu lên PostgreSQL...');
-            try {
-              await fetch(`${API_BASE_URL}/api/board/sync`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                  categories: INITIAL_CATEGORIES,
-                  columns: ensureCompletedColumnAtEnd(INITIAL_COLUMNS, 'col-4'),
-                  partnerColumns: ensureCompletedColumnAtEnd(INITIAL_PARTNER_COLUMNS, 'part-col-4'),
-                  cards: INITIAL_CARDS,
-                  settings: {
-                    todaySchedule: [],
-                    workdayDuration: 480,
-                    googleSheetUrl: '',
-                    googleSheetDisplayUrl: '',
-                    isAutoSyncEnabled: false,
-                    lastSyncTime: '',
-                    shifts: [
-                      { id: 'shift-1', name: 'Ca 1', startTime: '07:00', endTime: '15:00' },
-                      { id: 'shift-2', name: 'Ca 2', startTime: '15:00', endTime: '23:00' },
-                      { id: 'shift-3', name: 'Ca 3', startTime: '23:00', endTime: '07:00' }
-                    ],
-                    weeklyShifts: {}
-                  }
-                })
-              });
-              console.log('ZenBoard: Khởi tạo dữ liệu mẫu thành công!');
-            } catch (syncErr) {
-              console.error('Lỗi khởi tạo dữ liệu mẫu:', syncErr);
-            }
-          }
-          setIsBackendConnected(true);
-          console.log('ZenBoard: Đã kết nối và tải dữ liệu từ PostgreSQL Database thành công!');
-        }
-      } catch (err) {
-        console.warn('ZenBoard: Không thể kết nối với Backend Server. Sử dụng cấu hình mặc định (Offline).', err.message);
-        setIsBackendConnected(false);
-      } finally {
-        setIsInitialLoaded(true);
+      });
+      if (response.status === 401 || response.status === 403) {
+        handleLogout();
+        return;
       }
-    };
-    
+      if (!response.ok) throw new Error('Không thể tải dữ liệu từ máy chủ API.');
+      
+      const data = await response.json();
+      if (data.userId) {
+        setUserId(data.userId);
+      }
+      if (data.userRole) {
+        setRole(data.userRole);
+        localStorage.setItem('zenboard_role', data.userRole);
+      }
+      if (data.userPlan) {
+        setPlan(data.userPlan);
+        localStorage.setItem('zenboard_plan', data.userPlan);
+      }
+      if (data.isTeammate !== undefined) {
+        setIsTeammate(data.isTeammate);
+      }
+      if (data.planFeatures) {
+        setPlanFeatures(data.planFeatures);
+        localStorage.setItem('zenboard_plan_features', JSON.stringify(data.planFeatures));
+      }
+      
+      if (data.categories && data.columns && data.cards) {
+        // Chỉ nạp nếu cơ sở dữ liệu đã có dữ liệu thực tế (tránh nạp trống đè cấu hình)
+        if (data.columns.length > 0 || data.cards.length > 0 || data.categories.length > 0) {
+          let loadedCards = data.cards || [];
+          let loadedColumns = data.columns || [];
+
+          // Auto daily-clearing of completed tasks from previous days
+          const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
+          let hasArchiveUpdates = false;
+
+          const updatedCards = loadedCards.map(card => {
+            if (card.completedAt && !card.isArchived) {
+              const completedDateStr = card.completedAt.split('T')[0]; // YYYY-MM-DD
+              if (completedDateStr < todayStr) {
+                hasArchiveUpdates = true;
+                return { ...card, isArchived: true };
+              }
+            }
+            return card;
+          });
+
+          let updatedColumns = loadedColumns;
+          if (hasArchiveUpdates) {
+            const archivedIds = updatedCards.filter(c => c.isArchived).map(c => c.id);
+            updatedColumns = loadedColumns.map(col => {
+              if (col.id === 'col-4') {
+                return {
+                  ...col,
+                  cardIds: col.cardIds.filter(id => !archivedIds.includes(id))
+                };
+              }
+              return col;
+            });
+          }
+
+          // Tự động phân bổ các thẻ được giao (nếu chưa nằm trong cột nào của user) vào cột đầu tiên tương ứng
+          const loadedPartnerColumns = data.partnerColumns || [];
+          let updatedPartnerColumns = loadedPartnerColumns;
+
+          const partnerCat = data.categories.find(c => !c.parentId && c.name.includes('Đối tác'));
+          const partnerRootId = partnerCat ? partnerCat.id : 'cat-4';
+          
+          const checkIsCardPartnerLoad = (c) => {
+            if (!c.categoryId) return false;
+            if (c.categoryId === partnerRootId) return true;
+            let currentId = c.categoryId;
+            let limit = 10;
+            while (currentId && limit > 0) {
+              const cat = data.categories.find(catItem => catItem.id === currentId);
+              if (!cat) break;
+              if (cat.parentId === partnerRootId) return true;
+              currentId = cat.parentId;
+              limit--;
+            }
+            return false;
+          };
+
+          const allColumnCardIds = new Set([
+            ...updatedColumns.flatMap(col => col.cardIds || []),
+            ...updatedPartnerColumns.flatMap(col => col.cardIds || [])
+          ]);
+
+          const missingCards = updatedCards.filter(card => !card.isArchived && !allColumnCardIds.has(card.id));
+          const missingRegularCardIds = missingCards.filter(c => !checkIsCardPartnerLoad(c)).map(c => c.id);
+          const missingPartnerCardIds = missingCards.filter(c => checkIsCardPartnerLoad(c)).map(c => c.id);
+
+          if (missingRegularCardIds.length > 0 && updatedColumns.length > 0) {
+            updatedColumns = updatedColumns.map((col, index) => {
+              if (index === 0) {
+                return {
+                  ...col,
+                  cardIds: [...new Set([...col.cardIds, ...missingRegularCardIds])]
+                };
+              }
+              return col;
+            });
+          }
+
+          if (missingPartnerCardIds.length > 0 && updatedPartnerColumns.length > 0) {
+            updatedPartnerColumns = updatedPartnerColumns.map((col, index) => {
+              if (index === 0) {
+                return {
+                  ...col,
+                  cardIds: [...new Set([...col.cardIds, ...missingPartnerCardIds])]
+                };
+              }
+              return col;
+            });
+          }
+
+          setCategories(data.categories);
+          setColumns(updatedColumns);
+          if (data.partnerColumns) setPartnerColumns(updatedPartnerColumns);
+          setCards(updatedCards);
+          if (data.userRole) {
+
+            setRole(data.userRole);
+            localStorage.setItem('zenboard_role', data.userRole);
+          }
+          if (data.userPlan) {
+            setPlan(data.userPlan);
+            localStorage.setItem('zenboard_plan', data.userPlan);
+          }
+          if (data.planFeatures) {
+            setPlanFeatures(data.planFeatures);
+            localStorage.setItem('zenboard_plan_features', JSON.stringify(data.planFeatures));
+          }
+          
+          if (data.settings) {
+            if (data.settings.todaySchedule) setTodaySchedule(data.settings.todaySchedule);
+            if (data.settings.workdayDuration) setWorkdayDuration(data.settings.workdayDuration);
+            if (data.settings.googleSheetUrl) setGoogleSheetUrl(data.settings.googleSheetUrl);
+            if (data.settings.googleSheetDisplayUrl) setGoogleSheetDisplayUrl(data.settings.googleSheetDisplayUrl);
+            if (data.settings.isAutoSyncEnabled !== undefined) setIsAutoSyncEnabled(data.settings.isAutoSyncEnabled);
+            if (data.settings.lastSyncTime) setLastSyncTime(data.settings.lastSyncTime);
+            if (data.settings.shifts) setShifts(data.settings.shifts);
+            if (data.settings.weeklyShifts) setWeeklyShifts(data.settings.weeklyShifts);
+            if (data.settings.tags) {
+              setTags(data.settings.tags);
+              localStorage.setItem('zenboard_tags', JSON.stringify(data.settings.tags));
+            }
+            if (data.settings.partnerTags) {
+              setPartnerTags(data.settings.partnerTags);
+              localStorage.setItem('zenboard_partner_tags', JSON.stringify(data.settings.partnerTags));
+            }
+          }
+        } else {
+          // Cơ sở dữ liệu rỗng, tiến hành ghi đè dữ liệu mẫu mặc định lên DB
+          console.log('ZenBoard: Database rỗng, đang khởi tạo dữ liệu mẫu lên PostgreSQL...');
+          try {
+            await fetch(`${API_BASE_URL}/api/board/sync`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                categories: INITIAL_CATEGORIES,
+                columns: ensureCompletedColumnAtEnd(INITIAL_COLUMNS, 'col-4'),
+                partnerColumns: ensureCompletedColumnAtEnd(INITIAL_PARTNER_COLUMNS, 'part-col-4'),
+                cards: INITIAL_CARDS,
+                settings: {
+                  todaySchedule: [],
+                  workdayDuration: 480,
+                  googleSheetUrl: '',
+                  googleSheetDisplayUrl: '',
+                  isAutoSyncEnabled: false,
+                  lastSyncTime: '',
+                  shifts: [
+                    { id: 'shift-1', name: 'Ca 1', startTime: '07:00', endTime: '15:00' },
+                    { id: 'shift-2', name: 'Ca 2', startTime: '15:00', endTime: '23:00' },
+                    { id: 'shift-3', name: 'Ca 3', startTime: '23:00', endTime: '07:00' }
+                  ],
+                  weeklyShifts: {}
+                }
+              })
+            });
+            console.log('ZenBoard: Khởi tạo dữ liệu mẫu thành công!');
+          } catch (syncErr) {
+            console.error('Lỗi khởi tạo dữ liệu mẫu:', syncErr);
+          }
+        }
+        setIsBackendConnected(true);
+        console.log('ZenBoard: Đã kết nối và tải dữ liệu từ PostgreSQL Database thành công!');
+      }
+    } catch (err) {
+      console.warn('ZenBoard: Không thể kết nối với Backend Server. Sử dụng cấu hình mặc định (Offline).', err.message);
+      setIsBackendConnected(false);
+    } finally {
+      setIsInitialLoaded(true);
+    }
+  }, [token, role]);
+
+  useEffect(() => {
     loadBoardFromDatabase();
-  }, [token]);
+  }, [token, loadBoardFromDatabase]);
 
   const backendSyncTimeoutRef = useRef(null);
 
