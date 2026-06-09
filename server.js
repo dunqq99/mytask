@@ -382,6 +382,21 @@ function authenticateToken(req, res, next) {
   next();
 }
 
+// API Debug kiểm tra danh sách users
+app.get('/api/debug/users', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database chưa kết nối.' });
+  let client;
+  try {
+    client = await pool.connect();
+    const result = await client.query('SELECT id, username, role, plan FROM users');
+    client.release();
+    res.json(result.rows);
+  } catch (err) {
+    if (client) client.release();
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // API Đăng ký tài khoản mới
 app.post('/api/auth/register', async (req, res) => {
   const { username, password } = req.body;
