@@ -15,6 +15,11 @@ services:
       - "127.0.0.1:${POSTGRES_PORT}:5432" # Chỉ cho truy cập database từ nội bộ VPS (localhost) qua cổng cấu hình trong .env
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d zenboard"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   # Dịch vụ Express Backend API
   backend:
@@ -24,7 +29,8 @@ services:
     container_name: zenboard-backend
     restart: always
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     environment:
       PGHOST: db       # Kết nối tới container db qua mạng nội bộ Docker
       PGPORT: 5432     # Sử dụng cổng Postgres mặc định trong mạng Docker

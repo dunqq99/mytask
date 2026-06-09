@@ -49,6 +49,10 @@ export default function TeamManager({
           'Authorization': `Bearer ${token}`
         }
       });
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('Dịch vụ API Backend đang ngoại tuyến hoặc chưa khởi động. Vui lòng kiểm tra lại Docker/Server.');
+      }
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || 'Không thể tải danh sách đội nhóm.');
@@ -60,7 +64,11 @@ export default function TeamManager({
       setMyTeamName(data.myTeamName || '');
       setUserPlan(data.userPlan || 'free');
     } catch (err) {
-      setError(err.message);
+      if (err.name === 'SyntaxError') {
+        setError('Dữ liệu phản hồi từ Server không hợp lệ (Không phải JSON). Vui lòng khởi động lại Docker container.');
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
