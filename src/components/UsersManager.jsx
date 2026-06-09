@@ -22,6 +22,7 @@ import {
 const PLAN_PRESETS = [
   { key: 'free', label: 'Free (Miễn phí)', color: '#71717a', bg: 'rgba(113, 113, 122, 0.15)' },
   { key: 'pro', label: 'Pro (Chuyên nghiệp)', color: '#a855f7', bg: 'rgba(168, 85, 247, 0.15)' },
+  { key: 'business', label: 'Business (Đội nhóm)', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
   { key: 'enterprise', label: 'Enterprise (Doanh nghiệp)', color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.15)' },
   { key: 'vip', label: 'VIP (Đặc quyền)', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' }
 ];
@@ -721,13 +722,6 @@ export default function UsersManager({
               />
             )}
 
-            {/* SUBTAB 6: QUẢN LÝ VAI TRÒ ĐỘI NHÓM */}
-            {adminSubTab === 'team-roles' && (
-              <AdminTeamRolesManager 
-                token={token}
-                API_BASE_URL={API_BASE_URL}
-              />
-            )}
 
           </div>
         )}
@@ -753,15 +747,18 @@ function AdminTeamsManager({ token, API_BASE_URL, users }) {
   
   const [isEditing, setIsEditing] = useState(false);
 
-  const fetchTeamRoles = async () => {
+  const fetchTeamRoles = async (targetOwnerId) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/team-roles`, {
+      const url = targetOwnerId 
+        ? `${API_BASE_URL}/api/team-roles?ownerId=${targetOwnerId}` 
+        : `${API_BASE_URL}/api/team-roles`;
+      const res = await fetch(url, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!res.ok) throw new Error('Không thể tải danh sách vai trò.');
       const data = await res.json();
       setTeamRoles(data);
-      if (data.length > 0 && !selectedTeamRole) {
+      if (data.length > 0) {
         setSelectedTeamRole(data[0].roleKey);
       }
     } catch (err) {
@@ -813,6 +810,7 @@ function AdminTeamsManager({ token, API_BASE_URL, users }) {
     setShowForm(true);
     setError('');
     setSuccessMsg('');
+    fetchTeamRoles(team.ownerId);
   };
 
   const handleAddMemberToForm = () => {
@@ -940,7 +938,12 @@ function AdminTeamsManager({ token, API_BASE_URL, users }) {
             <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Trưởng nhóm (Manager - MNG):</label>
             <select
               value={ownerId}
-              onChange={(e) => setOwnerId(e.target.value)}
+              onChange={(e) => {
+                setOwnerId(e.target.value);
+                if (e.target.value) {
+                  fetchTeamRoles(e.target.value);
+                }
+              }}
               disabled={isEditing}
               style={{
                 padding: '8px 12px',
@@ -1166,249 +1169,3 @@ function AdminTeamsManager({ token, API_BASE_URL, users }) {
   );
 }
 
-function AdminTeamRolesManager({ token, API_BASE_URL }) {
-  const [roles, setRoles] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
-  
-  // Form states
-  const [roleKey, setRoleKey] = useState('');
-  const [roleName, setRoleName] = useState('');
-  const [isEditing, setIsEditing] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-
-  const fetchRoles = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/team-roles`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error('Không thể tải danh sách vai trò.');
-      const data = await res.json();
-      setRoles(data);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchRoles();
-  }, [token]);
-
-  const handleOpenCreateForm = () => {
-    setRoleKey('');
-    setRoleName('');
-    setIsEditing(false);
-    setShowForm(true);
-    setError('');
-    setSuccessMsg('');
-  };
-
-  const handleOpenEditForm = (role) => {
-    setRoleKey(role.roleKey);
-    setRoleName(role.roleName);
-    setIsEditing(true);
-    setShowForm(true);
-    setError('');
-    setSuccessMsg('');
-  };
-
-  const handleSaveRole = async (e) => {
-    e.preventDefault();
-    setError('');
-    setSuccessMsg('');
-    if (!roleKey.trim() || !roleName.trim()) {
-      setError('Vui lòng nhập đầy đủ mã và tên vai trò.');
-      return;
-    }
-
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/team-roles/save`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ roleKey: roleKey.trim(), roleName: roleName.trim() })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Lưu vai trò thất bại.');
-      
-      setSuccessMsg('Đã lưu vai trò thành công!');
-      setShowForm(false);
-      fetchRoles();
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const handleDeleteRole = async (targetRoleKey) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa vai trò "${targetRoleKey}"? Các thành viên hiện có vai trò này sẽ tự động chuyển sang một vai trò khác.`)) return;
-    setError('');
-    setSuccessMsg('');
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/team-roles/${targetRoleKey}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Xóa vai trò thất bại.');
-      
-      setSuccessMsg(`Đã xóa vai trò "${targetRoleKey}" thành công!`);
-      fetchRoles();
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-glass)', paddingBottom: '12px' }}>
-        <div>
-          <h3 style={{ fontSize: '15px', color: 'var(--text-primary)', margin: 0, fontWeight: '600' }}>Danh sách Vai trò Đội nhóm (RolesTeam)</h3>
-          <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>Xem, tạo mới hoặc chỉnh sửa các loại vai trò đội nhóm trong hệ thống.</p>
-        </div>
-        {!showForm && (
-          <button 
-            className="btn btn-primary"
-            onClick={handleOpenCreateForm}
-            style={{ padding: '8px 16px', borderRadius: '8px', fontSize: '13px' }}
-          >
-            Tạo vai trò mới
-          </button>
-        )}
-      </div>
-
-      {error && (
-        <div style={{ padding: '10px 14px', borderRadius: '6px', background: 'var(--danger-light)', color: 'var(--danger)', fontSize: '12.5px' }}>
-          {error}
-        </div>
-      )}
-
-      {successMsg && (
-        <div style={{ padding: '10px 14px', borderRadius: '6px', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', fontSize: '12.5px' }}>
-          {successMsg}
-        </div>
-      )}
-
-      {showForm ? (
-        <form onSubmit={handleSaveRole} style={{ background: 'rgba(255,255,255,0.01)', padding: '20px', borderRadius: '8px', border: '1px solid var(--border-glass)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <h4 style={{ margin: 0, fontSize: '14px', color: 'var(--primary)' }}>
-            {isEditing ? 'Chỉnh sửa Vai trò' : 'Tạo Vai trò Mới'}
-          </h4>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Mã vai trò (role_key):</label>
-            <input
-              type="text"
-              value={roleKey}
-              onChange={(e) => setRoleKey(e.target.value)}
-              disabled={isEditing}
-              placeholder="ví dụ: StaffDesign, StaffQA..."
-              style={{
-                padding: '8px 12px',
-                fontSize: '13px',
-                borderRadius: '6px',
-                background: 'rgba(255,255,255,0.05)',
-                border: '1px solid var(--border-glass)',
-                color: 'var(--text-primary)',
-                outline: 'none',
-                maxWidth: '300px'
-              }}
-              required
-            />
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Tên hiển thị:</label>
-            <input
-              type="text"
-              value={roleName}
-              onChange={(e) => setRoleName(e.target.value)}
-              placeholder="ví dụ: Nhân viên Thiết kế, Nhân viên Kiểm thử..."
-              style={{
-                padding: '8px 12px',
-                fontSize: '13px',
-                borderRadius: '6px',
-                background: 'rgba(255,255,255,0.05)',
-                border: '1px solid var(--border-glass)',
-                color: 'var(--text-primary)',
-                outline: 'none',
-                maxWidth: '400px'
-              }}
-              required
-            />
-          </div>
-
-          <div style={{ display: 'flex', gap: '10px', marginTop: '10px', justifyContent: 'flex-end' }}>
-            <button 
-              type="button" 
-              className="btn btn-secondary"
-              onClick={() => { setShowForm(false); setError(''); }}
-              style={{ padding: '8px 16px', borderRadius: '8px', fontSize: '13px' }}
-            >
-              Hủy bộ
-            </button>
-            <button 
-              type="submit" 
-              className="btn btn-primary"
-              style={{ padding: '8px 16px', borderRadius: '8px', fontSize: '13px' }}
-            >
-              Lưu vai trò
-            </button>
-          </div>
-        </form>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {loading ? (
-            <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)' }}>
-              Đang tải danh sách vai trò...
-            </div>
-          ) : roles.length === 0 ? (
-            <div style={{ padding: '40px', borderRadius: '8px', border: '1px dashed var(--border-glass)', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
-              Chưa có vai trò nào trong hệ thống. Hãy tạo vai trò mới!
-            </div>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
-              {roles.map(role => (
-                <div key={role.roleKey} style={{ padding: '16px', borderRadius: '8px', border: '1px solid var(--border-glass)', background: 'rgba(255,255,255,0.01)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '12px' }}>
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-glass)', paddingBottom: '8px', marginBottom: '8px' }}>
-                      <span style={{ fontWeight: 'bold', color: 'var(--primary)', fontSize: '13.5px' }}>
-                        {role.roleName}
-                      </span>
-                      <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(59,130,246,0.15)', color: '#3b82f6', fontWeight: 'bold' }}>
-                        {role.roleKey}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid var(--border-glass)', paddingTop: '8px', marginTop: '4px' }}>
-                    <button 
-                      className="btn btn-secondary"
-                      onClick={() => handleOpenEditForm(role)}
-                      style={{ padding: '4px 10px', fontSize: '12px', borderRadius: '6px' }}
-                    >
-                      Sửa vai trò
-                    </button>
-                    <button 
-                      className="btn btn-secondary"
-                      onClick={() => handleDeleteRole(role.roleKey)}
-                      style={{ padding: '4px 10px', fontSize: '12px', borderRadius: '6px', color: 'var(--danger)', borderColor: 'rgba(239,68,68,0.2)' }}
-                    >
-                      Xóa
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}

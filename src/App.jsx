@@ -1837,6 +1837,7 @@ export default function App() {
               API_BASE_URL={API_BASE_URL}
               currentUsername={username}
               currentUserId={userId}
+              onTeamChange={loadBoardFromDatabase}
             />
           ) : (
             /* Dashboard Render (passing full states to build complete stats) */

@@ -575,16 +575,6 @@ export default function Sidebar({
               </div>
             </div>
 
-            <div 
-              className={`sidebar-item ${adminSubTab === 'team-roles' ? 'active' : ''}`}
-              onClick={() => setAdminSubTab('team-roles')}
-              style={{ cursor: 'pointer' }}
-            >
-              <div className="sidebar-item-content">
-                <Shield size={16} />
-                <span className="sidebar-item-text">Vai trò Đội nhóm</span>
-              </div>
-            </div>
           </div>
         ) : (
           /* Render Normal Category Management Tree */
