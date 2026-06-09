@@ -657,24 +657,11 @@ app.post('/api/admin/plans/features', authenticateToken, async (req, res) => {
 app.get('/api/board', authenticateToken, async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database chưa kết nối thành công.' });
   
-  let userId = req.user.id;
-  const currentUserId = req.user.id;
-  const reqOwnerId = req.headers['x-workspace-owner-id'] || req.query.workspaceOwnerId;
+  const userId = req.user.id;
   
   let client;
   try {
     client = await pool.connect();
-
-    // Kiểm tra quyền truy cập workspace
-    if (reqOwnerId && reqOwnerId !== currentUserId) {
-      const checkMem = await client.query('SELECT 1 FROM team_members WHERE owner_id = $1 AND member_id = $2', [reqOwnerId, currentUserId]);
-      if (checkMem.rows.length > 0) {
-        userId = reqOwnerId; // Chuyển ngữ cảnh sang tài khoản trưởng nhóm
-      } else {
-        client.release();
-        return res.status(403).json({ error: 'Bạn không có quyền truy cập workspace này.' });
-      }
-    }
 
     const data = {
       categories: [],
@@ -704,8 +691,18 @@ app.get('/api/board', authenticateToken, async (req, res) => {
       }
     });
 
-    // 3. Tải Cards
-    const cardRes = await client.query('SELECT id, title, description, tags, start_date AS "startDate", due_date AS "dueDate", estimated_duration AS "estimatedDuration", category_id AS "categoryId", checklist, activities, image, services, is_archived AS "isArchived", completed_at AS "completedAt", linked_partner_id AS "linkedPartnerId", assignee_id AS "assigneeId" FROM cards WHERE user_id = $1', [userId]);
+    // 3. Tải Cards (gồm thẻ tự tạo, thẻ được giao, hoặc thẻ của thành viên trong nhóm)
+    const cardRes = await client.query(`
+      SELECT id, title, description, tags, start_date AS "startDate", due_date AS "dueDate", 
+             estimated_duration AS "estimatedDuration", category_id AS "categoryId", 
+             checklist, activities, image, services, is_archived AS "isArchived", 
+             completed_at AS "completedAt", linked_partner_id AS "linkedPartnerId", 
+             assignee_id AS "assigneeId", user_id AS "userId" 
+      FROM cards 
+      WHERE user_id = $1 
+         OR assignee_id = $1 
+         OR user_id IN (SELECT member_id FROM team_members WHERE owner_id = $1)
+    `, [userId]);
     data.cards = cardRes.rows.map(c => ({
       id: c.id,
       title: c.title,
@@ -722,7 +719,8 @@ app.get('/api/board', authenticateToken, async (req, res) => {
       isArchived: !!c.isArchived,
       completedAt: c.completedAt || null,
       linkedPartnerId: c.linkedPartnerId || null,
-      assigneeId: c.assigneeId || null
+      assigneeId: c.assigneeId || null,
+      userId: c.userId || null
     }));
 
 
@@ -774,10 +772,8 @@ app.get('/api/board', authenticateToken, async (req, res) => {
 app.post('/api/board/sync', authenticateToken, async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database chưa kết nối thành công.' });
   const { categories, columns, partnerColumns, cards, settings } = req.body;
-  let userId = req.user.id;
-  const currentUserId = req.user.id;
+  const userId = req.user.id;
   const userRole = req.user.role || 'editor';
-  const reqOwnerId = req.headers['x-workspace-owner-id'];
 
   if (userRole === 'viewer') {
     return res.status(403).json({ error: 'Bạn không có quyền chỉnh sửa dữ liệu (Quyền Xem).' });
@@ -787,18 +783,6 @@ app.post('/api/board/sync', authenticateToken, async (req, res) => {
   try {
     client = await pool.connect();
     await client.query('BEGIN');
-
-    // Kiểm tra quyền chỉnh sửa và chuyển đổi ngữ cảnh workspace
-    if (reqOwnerId && reqOwnerId !== currentUserId) {
-      const checkMem = await client.query('SELECT 1 FROM team_members WHERE owner_id = $1 AND member_id = $2', [reqOwnerId, currentUserId]);
-      if (checkMem.rows.length > 0) {
-        userId = reqOwnerId; // Đồng bộ trực tiếp vào workspace của trưởng nhóm
-      } else {
-        await client.query('ROLLBACK');
-        client.release();
-        return res.status(403).json({ error: 'Bạn không có quyền truy cập và chỉnh sửa workspace này.' });
-      }
-    }
 
     // 1. Cập nhật Categories
     await client.query('DELETE FROM categories WHERE user_id = $1', [userId]);
@@ -827,31 +811,65 @@ app.post('/api/board/sync', authenticateToken, async (req, res) => {
       }
     }
 
-    // 3. Cập nhật Cards
+    // 3. Cập nhật Cards (chỉ xóa các thẻ do chính user đó sở hữu)
     await client.query('DELETE FROM cards WHERE user_id = $1', [userId]);
     if (Array.isArray(cards) && cards.length > 0) {
       for (const c of cards) {
-        await client.query(`INSERT INTO cards 
-          (id, title, description, tags, start_date, due_date, estimated_duration, category_id, checklist, activities, image, services, user_id, is_archived, completed_at, linked_partner_id, assignee_id) 
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`, [
-            c.id,
-            c.title,
-            c.description || '',
-            JSON.stringify(c.tags || []),
-            c.startDate || '',
-            c.dueDate || '',
-            c.estimatedDuration || 0,
-            c.categoryId || null,
-            JSON.stringify(c.checklist || []),
-            JSON.stringify(c.activities || []),
-            c.image || null,
-            JSON.stringify(c.services || []),
-            userId,
-            c.isArchived || false,
-            c.completedAt || null,
-            c.linkedPartnerId || null,
-            c.assigneeId || null
-          ]);
+        // Nếu c.userId trùng với userId hoặc không có userId (thẻ mới): thực hiện INSERT
+        if (!c.userId || c.userId === userId) {
+          await client.query(`INSERT INTO cards 
+            (id, title, description, tags, start_date, due_date, estimated_duration, category_id, checklist, activities, image, services, user_id, is_archived, completed_at, linked_partner_id, assignee_id) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`, [
+              c.id,
+              c.title,
+              c.description || '',
+              JSON.stringify(c.tags || []),
+              c.startDate || '',
+              c.dueDate || '',
+              c.estimatedDuration || 0,
+              c.categoryId || null,
+              JSON.stringify(c.checklist || []),
+              JSON.stringify(c.activities || []),
+              c.image || null,
+              JSON.stringify(c.services || []),
+              userId,
+              c.isArchived || false,
+              c.completedAt || null,
+              c.linkedPartnerId || null,
+              c.assigneeId || null
+            ]);
+        } else {
+          // Thẻ thuộc quyền sở hữu của người khác: thực hiện UPDATE nếu được quyền hạn
+          await client.query(`UPDATE cards SET 
+            title = $1, description = $2, tags = $3, start_date = $4, due_date = $5, 
+            estimated_duration = $6, category_id = $7, checklist = $8, activities = $9, 
+            image = $10, services = $11, is_archived = $12, completed_at = $13, 
+            linked_partner_id = $14, assignee_id = $15 
+            WHERE id = $16 
+              AND (
+                user_id = $17 
+                OR assignee_id = $17 
+                OR user_id IN (SELECT member_id FROM team_members WHERE owner_id = $17)
+              )`, [
+              c.title,
+              c.description || '',
+              JSON.stringify(c.tags || []),
+              c.startDate || '',
+              c.dueDate || '',
+              c.estimatedDuration || 0,
+              c.categoryId || null,
+              JSON.stringify(c.checklist || []),
+              JSON.stringify(c.activities || []),
+              c.image || null,
+              JSON.stringify(c.services || []),
+              c.isArchived || false,
+              c.completedAt || null,
+              c.linkedPartnerId || null,
+              c.assigneeId || null,
+              c.id,
+              userId
+            ]);
+        }
       }
     }
 
@@ -882,33 +900,35 @@ app.post('/api/board/sync', authenticateToken, async (req, res) => {
   }
 });
 
-// API Lấy danh sách thành viên trong workspace hiện tại (bao gồm Trưởng nhóm và các thành viên khác)
+// API Lấy danh sách thành viên trong vòng tròn đội nhóm của user hiện tại
 app.get('/api/workspace/members', authenticateToken, async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database chưa kết nối.' });
-  const workspaceOwnerId = req.query.workspaceOwnerId || req.user.id;
+  const userId = req.user.id;
   
   let client;
   try {
     client = await pool.connect();
     
-    // Kiểm tra quyền xem workspace
-    const userId = req.user.id;
-    if (workspaceOwnerId !== userId) {
-      const checkMem = await client.query('SELECT 1 FROM team_members WHERE owner_id = $1 AND member_id = $2', [workspaceOwnerId, userId]);
-      if (checkMem.rows.length === 0) {
-        client.release();
-        return res.status(403).json({ error: 'Bạn không có quyền truy cập thông tin workspace này.' });
-      }
-    }
-    
-    // Tải thông tin của trưởng nhóm và các thành viên được mời
+    // Tải thông tin của:
+    // 1. Bản thân user
+    // 2. Các thành viên do user mời (Đội nhóm của tôi)
+    // 3. Các trưởng nhóm của các nhóm user đã tham gia
+    // 4. Các thành viên khác cùng thuộc các nhóm user đã tham gia (fellow members)
     const membersRes = await client.query(`
       SELECT id, username FROM users WHERE id = $1
       UNION
       SELECT u.id, u.username FROM users u
       JOIN team_members tm ON tm.member_id = u.id
       WHERE tm.owner_id = $1
-    `, [workspaceOwnerId]);
+      UNION
+      SELECT u.id, u.username FROM users u
+      JOIN team_members tm ON tm.owner_id = u.id
+      WHERE tm.member_id = $1
+      UNION
+      SELECT u.id, u.username FROM users u
+      JOIN team_members tm ON tm.member_id = u.id
+      WHERE tm.owner_id IN (SELECT owner_id FROM team_members WHERE member_id = $1)
+    `, [userId]);
     
     client.release();
     res.json(membersRes.rows);

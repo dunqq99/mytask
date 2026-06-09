@@ -15,9 +15,7 @@ export default function TeamManager({
   token,
   API_BASE_URL,
   currentUsername,
-  currentUserId,
-  workspaceOwnerId,
-  setWorkspaceOwnerId
+  currentUserId
 }) {
   const [inviteUsername, setInviteUsername] = useState('');
   const [myMembers, setMyMembers] = useState([]);
@@ -119,59 +117,8 @@ export default function TeamManager({
     }
   };
 
-  // Find active workspace owner name
-  const activeWorkspaceName = workspaceOwnerId === currentUserId 
-    ? 'Không gian Cá nhân của bạn' 
-    : `Không gian của Trưởng nhóm: ${joinedTeams.find(t => t.ownerId === workspaceOwnerId)?.ownerUsername || '...'}`;
-
   return (
     <div style={{ padding: '24px 0', maxWidth: '1000px', margin: '0 auto', color: 'var(--text-primary)' }}>
-      {/* Workspace Status Header Banner */}
-      <div className="glass-panel" style={{
-        padding: '20px',
-        marginBottom: '24px',
-        borderRadius: '12px',
-        border: '1px solid var(--border-glass)',
-        background: 'rgba(255, 255, 255, 0.02)',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '16px'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{
-            width: '42px',
-            height: '42px',
-            borderRadius: '10px',
-            background: workspaceOwnerId === currentUserId ? 'rgba(59, 130, 246, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: workspaceOwnerId === currentUserId ? '#3b82f6' : '#f59e0b'
-          }}>
-            <Briefcase size={20} />
-          </div>
-          <div>
-            <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Workspace Hiện tại:</div>
-            <div style={{ fontSize: '15px', fontWeight: 'bold', color: 'var(--text-primary)' }}>{activeWorkspaceName}</div>
-          </div>
-        </div>
-
-        {workspaceOwnerId !== currentUserId && (
-          <button
-            className="btn btn-primary"
-            onClick={() => {
-              setWorkspaceOwnerId(currentUserId);
-              setSuccess('Đã quay trở lại Không gian làm việc cá nhân của bạn.');
-            }}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px' }}
-          >
-            <Home size={14} />
-            <span>Quay lại Workspace Cá nhân</span>
-          </button>
-        )}
-      </div>
 
       {error && (
         <div className="alert alert-danger" style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '8px', color: '#f87171', fontSize: '13px' }}>
@@ -300,7 +247,6 @@ export default function TeamManager({
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {joinedTeams.map(t => {
-                const isActive = workspaceOwnerId === t.ownerId;
                 return (
                   <div key={t.ownerId} style={{
                     display: 'flex',
@@ -308,35 +254,17 @@ export default function TeamManager({
                     alignItems: 'center',
                     padding: '12px',
                     borderRadius: '8px',
-                    border: isActive ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid rgba(255, 255, 255, 0.05)',
-                    background: isActive ? 'rgba(245, 158, 11, 0.03)' : 'rgba(255, 255, 255, 0.01)',
-                    boxShadow: isActive ? '0 0 10px rgba(245, 158, 11, 0.05)' : 'none'
+                    border: '1px solid rgba(255, 255, 255, 0.05)',
+                    background: 'rgba(255, 255, 255, 0.01)'
                   }}>
                     <div>
-                      <div style={{ fontSize: '13.5px', fontWeight: '600', color: isActive ? '#f59e0b' : 'inherit' }}>
+                      <div style={{ fontSize: '13.5px', fontWeight: '600' }}>
                         Trưởng nhóm: {t.ownerUsername}
                       </div>
                       <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        {isActive ? '🟢 Đang trong Workspace này' : 'Chia sẻ bảng Kanban & Lập kế hoạch'}
+                        Đồng tác viên (Nhận và thực hiện các công việc được giao)
                       </div>
                     </div>
-                    
-                    {!isActive ? (
-                      <button
-                        className="btn btn-secondary"
-                        onClick={() => {
-                          setWorkspaceOwnerId(t.ownerId);
-                          setSuccess(`Đã chuyển đổi sang không gian làm việc của Trưởng nhóm "${t.ownerUsername}".`);
-                        }}
-                        style={{ padding: '6px 12px', fontSize: '11px' }}
-                      >
-                        Vào Workspace
-                      </button>
-                    ) : (
-                      <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 'bold', padding: '4px 8px', background: 'rgba(245,158,11,0.1)', borderRadius: '4px' }}>
-                        Đang xem
-                      </span>
-                    )}
                   </div>
                 );
               })}

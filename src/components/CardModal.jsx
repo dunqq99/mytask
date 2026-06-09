@@ -72,8 +72,7 @@ export default function CardModal({
   isReadOnly = false,
   userPlan = 'free',
   planFeatures = null,
-  workspaceMembers = [],
-  workspaceOwnerId = ''
+  workspaceMembers = []
 }) {
   const currentFeatures = React.useMemo(() => {
     const DEFAULT_PLAN_FEATURES = {

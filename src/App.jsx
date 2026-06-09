@@ -312,28 +312,13 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState('dashboard'); // 'board', 'planner', 'partners' or 'dashboard'
   const [userId, setUserId] = useState('');
-  const [workspaceOwnerId, setWorkspaceOwnerId] = useState(() => localStorage.getItem('zenboard_workspace_owner_id') || '');
   const [workspaceMembers, setWorkspaceMembers] = useState([]);
 
   useEffect(() => {
-    if (workspaceOwnerId) {
-      localStorage.setItem('zenboard_workspace_owner_id', workspaceOwnerId);
-    } else {
-      localStorage.removeItem('zenboard_workspace_owner_id');
-    }
-  }, [workspaceOwnerId]);
-
-  useEffect(() => {
-    if (userId && !workspaceOwnerId) {
-      setWorkspaceOwnerId(userId);
-    }
-  }, [userId, workspaceOwnerId]);
-
-  useEffect(() => {
-    if (!token || !workspaceOwnerId) return;
+    if (!token) return;
     const fetchWorkspaceMembers = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/workspace/members?workspaceOwnerId=${workspaceOwnerId}`, {
+        const response = await fetch(`${API_BASE_URL}/api/workspace/members`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -347,7 +332,7 @@ export default function App() {
       }
     };
     fetchWorkspaceMembers();
-  }, [token, workspaceOwnerId, activeTab]);
+  }, [token, activeTab]);
   const [dashboardSubTab, setDashboardSubTab] = useState('tasks'); // 'tasks' or 'partners'
   const [adminSubTab, setAdminSubTab] = useState('members'); // 'members', 'roles', 'plans', 'data'
   const [plannerBacklogFilter, setPlannerBacklogFilter] = useState('all'); // 'all', 'urgent', 'no-due', 'short'
@@ -556,8 +541,7 @@ export default function App() {
       try {
         const response = await fetch(`${API_BASE_URL}/api/board`, {
           headers: {
-            'Authorization': `Bearer ${token}`,
-            'X-Workspace-Owner-Id': workspaceOwnerId
+            'Authorization': `Bearer ${token}`
           }
         });
         if (response.status === 401 || response.status === 403) {
@@ -606,9 +590,64 @@ export default function App() {
               });
             }
 
+            // Tự động phân bổ các thẻ được giao (nếu chưa nằm trong cột nào của user) vào cột đầu tiên tương ứng
+            const loadedPartnerColumns = data.partnerColumns || [];
+            let updatedPartnerColumns = loadedPartnerColumns;
+
+            const partnerCat = data.categories.find(c => !c.parentId && c.name.includes('Đối tác'));
+            const partnerRootId = partnerCat ? partnerCat.id : 'cat-4';
+            
+            const checkIsCardPartnerLoad = (c) => {
+              if (!c.categoryId) return false;
+              if (c.categoryId === partnerRootId) return true;
+              let currentId = c.categoryId;
+              let limit = 10;
+              while (currentId && limit > 0) {
+                const cat = data.categories.find(catItem => catItem.id === currentId);
+                if (!cat) break;
+                if (cat.parentId === partnerRootId) return true;
+                currentId = cat.parentId;
+                limit--;
+              }
+              return false;
+            };
+
+            const allColumnCardIds = new Set([
+              ...updatedColumns.flatMap(col => col.cardIds || []),
+              ...updatedPartnerColumns.flatMap(col => col.cardIds || [])
+            ]);
+
+            const missingCards = updatedCards.filter(card => !card.isArchived && !allColumnCardIds.has(card.id));
+            const missingRegularCardIds = missingCards.filter(c => !checkIsCardPartnerLoad(c)).map(c => c.id);
+            const missingPartnerCardIds = missingCards.filter(c => checkIsCardPartnerLoad(c)).map(c => c.id);
+
+            if (missingRegularCardIds.length > 0 && updatedColumns.length > 0) {
+              updatedColumns = updatedColumns.map((col, index) => {
+                if (index === 0) {
+                  return {
+                    ...col,
+                    cardIds: [...new Set([...col.cardIds, ...missingRegularCardIds])]
+                  };
+                }
+                return col;
+              });
+            }
+
+            if (missingPartnerCardIds.length > 0 && updatedPartnerColumns.length > 0) {
+              updatedPartnerColumns = updatedPartnerColumns.map((col, index) => {
+                if (index === 0) {
+                  return {
+                    ...col,
+                    cardIds: [...new Set([...col.cardIds, ...missingPartnerCardIds])]
+                  };
+                }
+                return col;
+              });
+            }
+
             setCategories(data.categories);
             setColumns(updatedColumns);
-            if (data.partnerColumns) setPartnerColumns(data.partnerColumns);
+            if (data.partnerColumns) setPartnerColumns(updatedPartnerColumns);
             setCards(updatedCards);
             if (data.userRole) {
 
@@ -650,8 +689,7 @@ export default function App() {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${token}`,
-                  'X-Workspace-Owner-Id': workspaceOwnerId
+                  'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({
                   categories: INITIAL_CATEGORIES,
@@ -691,7 +729,7 @@ export default function App() {
     };
     
     loadBoardFromDatabase();
-  }, [token, workspaceOwnerId]);
+  }, [token]);
 
   const backendSyncTimeoutRef = useRef(null);
 
@@ -728,8 +766,7 @@ export default function App() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-            'X-Workspace-Owner-Id': workspaceOwnerId
+            'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify(payload)
         });
@@ -756,7 +793,7 @@ export default function App() {
         clearTimeout(backendSyncTimeoutRef.current);
       }
     };
-  }, [categories, columns, partnerColumns, cards, todaySchedule, workdayDuration, googleSheetUrl, googleSheetDisplayUrl, isAutoSyncEnabled, lastSyncTime, isInitialLoaded, token, shifts, weeklyShifts, tags, partnerTags, workspaceOwnerId]);
+  }, [categories, columns, partnerColumns, cards, todaySchedule, workdayDuration, googleSheetUrl, googleSheetDisplayUrl, isAutoSyncEnabled, lastSyncTime, isInitialLoaded, token, shifts, weeklyShifts, tags, partnerTags]);
 
   const partnerRootId = (() => {
     const partnerCat = categories.find(c => !c.parentId && c.name.includes('Đối tác'));
@@ -1747,8 +1784,6 @@ export default function App() {
               API_BASE_URL={API_BASE_URL}
               currentUsername={username}
               currentUserId={userId}
-              workspaceOwnerId={workspaceOwnerId}
-              setWorkspaceOwnerId={setWorkspaceOwnerId}
             />
           ) : (
             /* Dashboard Render (passing full states to build complete stats) */
@@ -1802,7 +1837,6 @@ export default function App() {
             userPlan={plan}
             planFeatures={planFeatures}
             workspaceMembers={workspaceMembers}
-            workspaceOwnerId={workspaceOwnerId}
           />
         );
       })()}
