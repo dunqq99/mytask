@@ -58,9 +58,9 @@ export default function TeamManager({
         throw new Error(data.error || 'Không thể tải danh sách đội nhóm.');
       }
       const data = await response.json();
-      setMyMembers(data.myMembers || []);
-      setJoinedTeams(data.joinedTeams || []);
-      setPendingInvites(data.pendingInvites || []);
+      setMyMembers(Array.isArray(data.myMembers) ? data.myMembers : []);
+      setJoinedTeams(Array.isArray(data.joinedTeams) ? data.joinedTeams : []);
+      setPendingInvites(Array.isArray(data.pendingInvites) ? data.pendingInvites : []);
       setMyTeamName(data.myTeamName || '');
       setUserPlan(data.userPlan || 'free');
     } catch (err) {
@@ -80,8 +80,13 @@ export default function TeamManager({
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
-        const data = await res.json();
-        setTeamRoles(data);
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            setTeamRoles(data);
+          }
+        }
       }
     } catch (err) {
       console.error('Lỗi tải vai trò động:', err);
