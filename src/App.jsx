@@ -1251,7 +1251,7 @@ export default function App() {
         if (activeCategoryId === 'all') {
           matchesCategory = !checkIsCardPartner(card);
         } else if (activeCategoryId === 'uncategorized') {
-          matchesCategory = !card.categoryId;
+          matchesCategory = !card.categoryId || !categories.some(c => c.id === card.categoryId);
         } else {
           const descendants = getDescendantIds(activeCategoryId, categories);
           const allowedCategoryIds = [activeCategoryId, ...descendants];
@@ -1273,7 +1273,7 @@ export default function App() {
       counts['uncategorized'] = cards.filter(c => c.categoryId === partnerRootId).length;
     } else {
       counts['all'] = cards.filter(c => !checkIsCardPartner(c)).length;
-      counts['uncategorized'] = cards.filter(c => !c.categoryId).length;
+      counts['uncategorized'] = cards.filter(c => !c.categoryId || !categories.some(cat => cat.id === c.categoryId)).length;
     }
 
     categories.forEach(cat => {
