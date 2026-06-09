@@ -183,6 +183,9 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
       await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS linked_partner_id VARCHAR(50)`);
       await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS assignee_id VARCHAR(50)`);
       await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS column_id VARCHAR(50)`);
+      await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS created_by VARCHAR(50)`);
+      await client.query(`UPDATE cards SET created_by = user_id WHERE created_by IS NULL`);
+
 
       // Bảng thành viên nhóm (Team Members)
       await client.query(`CREATE TABLE IF NOT EXISTS team_members (
@@ -1261,7 +1264,8 @@ app.get('/api/board', authenticateToken, async (req, res) => {
                estimated_duration AS "estimatedDuration", category_id AS "categoryId", 
                checklist, activities, image, services, is_archived AS "isArchived", 
                completed_at AS "completedAt", linked_partner_id AS "linkedPartnerId", 
-               assignee_id AS "assigneeId", user_id AS "userId", column_id AS "columnId" 
+               assignee_id AS "assigneeId", user_id AS "userId", column_id AS "columnId",
+               created_by AS "createdBy"
         FROM cards 
         WHERE user_id = $1 
            OR assignee_id = $1 
@@ -1273,7 +1277,8 @@ app.get('/api/board', authenticateToken, async (req, res) => {
                estimated_duration AS "estimatedDuration", category_id AS "categoryId", 
                checklist, activities, image, services, is_archived AS "isArchived", 
                completed_at AS "completedAt", linked_partner_id AS "linkedPartnerId", 
-               assignee_id AS "assigneeId", user_id AS "userId", column_id AS "columnId" 
+               assignee_id AS "assigneeId", user_id AS "userId", column_id AS "columnId",
+               created_by AS "createdBy"
         FROM cards 
         WHERE user_id = $1 
            OR assignee_id = $1
@@ -1297,7 +1302,8 @@ app.get('/api/board', authenticateToken, async (req, res) => {
       linkedPartnerId: c.linkedPartnerId || null,
       assigneeId: c.assigneeId || null,
       userId: c.userId || null,
-      columnId: c.columnId || null
+      columnId: c.columnId || null,
+      createdBy: c.createdBy || null
     }));
 
     // 4. Tải Columns (của Manager nếu là thành viên) và tái thiết lập cardIds cho từng cột
@@ -1513,8 +1519,8 @@ app.post('/api/board/sync', authenticateToken, async (req, res) => {
           // Thẻ thuộc sở hữu của chính user hiện tại
           await client.query(`
             INSERT INTO cards 
-              (id, title, description, tags, start_date, due_date, estimated_duration, category_id, checklist, activities, image, services, user_id, is_archived, completed_at, linked_partner_id, assignee_id, column_id) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+              (id, title, description, tags, start_date, due_date, estimated_duration, category_id, checklist, activities, image, services, user_id, is_archived, completed_at, linked_partner_id, assignee_id, column_id, created_by) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
             ON CONFLICT (id, user_id) 
             DO UPDATE SET
               title = EXCLUDED.title,
@@ -1532,12 +1538,13 @@ app.post('/api/board/sync', authenticateToken, async (req, res) => {
               completed_at = EXCLUDED.completed_at,
               linked_partner_id = EXCLUDED.linked_partner_id,
               assignee_id = EXCLUDED.assignee_id,
-              column_id = EXCLUDED.column_id
+              column_id = EXCLUDED.column_id,
+              created_by = EXCLUDED.created_by
           `, [
             c.id, c.title, c.description || '', JSON.stringify(c.tags || []), c.startDate || '', c.dueDate || '',
             c.estimatedDuration || 0, c.categoryId || null, JSON.stringify(c.checklist || []), JSON.stringify(c.activities || []),
             c.image || null, JSON.stringify(c.services || []), userId, c.isArchived || false, c.completedAt || null,
-            c.linkedPartnerId || null, c.assigneeId || null, targetColId
+            c.linkedPartnerId || null, c.assigneeId || null, targetColId, c.createdBy || userId
           ]);
         } else {
           // Chuyển giao công việc (gán việc cho người khác)
@@ -1547,13 +1554,14 @@ app.post('/api/board/sync', authenticateToken, async (req, res) => {
               title = $1, description = $2, tags = $3, start_date = $4, due_date = $5, 
               estimated_duration = $6, category_id = null, checklist = $7, activities = $8, 
               image = $9, services = $10, is_archived = $11, completed_at = $12, 
-              linked_partner_id = $13, assignee_id = $14, column_id = $15, user_id = $16
+              linked_partner_id = $13, assignee_id = $14, column_id = $15, user_id = $16,
+              created_by = $19
             WHERE id = $17 AND (user_id = $18 OR assignee_id = $18)
           `, [
             c.title, c.description || '', JSON.stringify(c.tags || []), c.startDate || '', c.dueDate || '',
             c.estimatedDuration || 0, JSON.stringify(c.checklist || []), JSON.stringify(c.activities || []),
             c.image || null, JSON.stringify(c.services || []), c.isArchived || false, c.completedAt || null,
-            c.linkedPartnerId || null, c.assigneeId || null, defaultColId, c.userId, c.id, userId
+            c.linkedPartnerId || null, c.assigneeId || null, defaultColId, c.userId, c.id, userId, c.createdBy || userId
           ]);
         }
       }

@@ -1275,7 +1275,9 @@ export default function App() {
       categoryId: (activeCategoryId !== 'all' && activeCategoryId !== 'uncategorized') ? activeCategoryId : (isPartnerActive ? partnerRootId : null),
       createdAt: now.toISOString(),
       isArchived: false,
-      completedAt: null
+      completedAt: null,
+      createdBy: userId,
+      userId: userId
     };
 
     setCards([newCard, ...cards]);

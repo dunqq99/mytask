@@ -52,6 +52,13 @@ export default function Dashboard({
   // Collapsed states for team performance member cards
   const [expandedMemberId, setExpandedMemberId] = useState(null);
 
+  const getUserUsername = (uId) => {
+    if (!uId) return <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Chưa rõ</span>;
+    if (uId === currentUserId) return <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>Tôi</span>;
+    const found = workspaceMembers.find(m => m.id === uId);
+    return found ? found.username : uId;
+  };
+
   // VPS and Client system clocks
   const [vpsTimeInfo, setVpsTimeInfo] = useState({ time: 'Đang tải...', timezone: 'Đang tải...' });
   const [clientTime, setClientTime] = useState(() => new Date());
@@ -647,6 +654,8 @@ export default function Dashboard({
                     <thead>
                       <tr>
                         <th>Tên công việc</th>
+                        <th>Người giao</th>
+                        <th>Người nhận</th>
                         <th>Trạng thái</th>
                         <th>Thời lượng</th>
                         <th>Hạn chót</th>
@@ -658,6 +667,8 @@ export default function Dashboard({
                         return (
                           <tr key={card.id}>
                             <td className="task-cell-title">{card.title}</td>
+                            <td>{getUserUsername(card.createdBy)}</td>
+                            <td>{getUserUsername(card.userId)}</td>
                             <td>
                               {card.isArchived ? (
                                 <span 
@@ -1295,13 +1306,16 @@ export default function Dashboard({
                                       }}
                                     >
                                       <div style={{ fontWeight: '500', color: 'var(--text-primary)', marginBottom: '4px' }}>{task.title}</div>
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)' }}>
-                                        <span>Cột: {columns.find(col => col.id === task.columnId)?.title || task.columnId || 'Chưa phân loại'}</span>
-                                        {task.dueDate && (
-                                          <span style={{ color: isOverdue ? 'var(--danger)' : 'var(--text-muted)' }}>
-                                            Hạn: {task.dueDate} {isOverdue && '(Trễ hạn! ⚠️)'}
-                                          </span>
-                                        )}
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                          <span>Cột: {columns.find(col => col.id === task.columnId)?.title || task.columnId || 'Chưa phân loại'}</span>
+                                          {task.dueDate && (
+                                            <span style={{ color: isOverdue ? 'var(--danger)' : 'var(--text-muted)' }}>
+                                              Hạn: {task.dueDate} {isOverdue && '(Trễ hạn! ⚠️)'}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div>Giao bởi: {getUserUsername(task.createdBy)}</div>
                                       </div>
                                     </div>
                                   );
@@ -1335,8 +1349,9 @@ export default function Dashboard({
                                     }}
                                   >
                                     <div style={{ fontWeight: '500', color: 'var(--text-primary)', marginBottom: '4px' }}>{task.title}</div>
-                                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                                      Xong lúc: {task.completedAt ? new Date(task.completedAt).toLocaleString('vi-VN') : 'N/A'}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                                      <div>Xong lúc: {task.completedAt ? new Date(task.completedAt).toLocaleString('vi-VN') : 'N/A'}</div>
+                                      <div>Giao bởi: {getUserUsername(task.createdBy)}</div>
                                     </div>
                                   </div>
                                 ))}
