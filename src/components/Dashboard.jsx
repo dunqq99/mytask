@@ -312,16 +312,17 @@ export default function Dashboard({
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <input
                   type="date"
-                  className="search-input"
                   style={{ 
-                    padding: '3px 8px', 
-                    fontSize: '11.5px', 
+                    padding: '4px 10px', 
+                    fontSize: '12.5px', 
                     border: '1px solid var(--border-glass)', 
-                    background: 'var(--bg-glass-column)', 
+                    background: 'var(--bg-input)', 
                     color: 'var(--text-primary)', 
-                    borderRadius: '4px', 
+                    borderRadius: 'var(--border-radius-md)', 
                     outline: 'none',
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    colorScheme: 'dark',
+                    fontFamily: 'var(--font-body)'
                   }}
                   value={customDate}
                   onChange={(e) => setCustomDate(e.target.value || new Date().toLocaleDateString('en-CA'))}

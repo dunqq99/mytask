@@ -1555,22 +1555,33 @@ export default function App() {
                   </div>
 
                   {!isPartnerActive && (
-                    <div className="search-input-wrapper" style={{ marginLeft: '12px', display: 'flex', alignItems: 'center' }}>
-                      <CalendarDays size={14} style={{ marginRight: '6px' }} />
-                      <span style={{ fontSize: '11.5px', fontWeight: 'bold', color: 'var(--text-secondary)', marginRight: '6px' }}>
+                    <div style={{
+                      marginLeft: '12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '6px 12px',
+                      borderRadius: 'var(--border-radius-md)',
+                      border: '1px solid var(--border-glass)',
+                      background: 'var(--bg-input)',
+                      color: 'var(--text-primary)',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      <CalendarDays size={14} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                      <span style={{ fontSize: '12.5px', fontWeight: '500', color: 'var(--text-secondary)' }}>
                         Hoàn thành ngày:
                       </span>
                       <input
                         type="date"
-                        className="search-input"
                         style={{ 
-                          padding: '2px 6px', 
-                          fontSize: '11.5px', 
                           border: 'none', 
                           background: 'transparent',
                           color: 'var(--text-primary)',
+                          fontFamily: 'var(--font-body)',
+                          fontSize: '13px',
                           outline: 'none',
-                          cursor: 'pointer'
+                          cursor: 'pointer',
+                          colorScheme: 'dark'
                         }}
                         value={selectedCompletedDate}
                         onChange={(e) => setSelectedCompletedDate(e.target.value || new Date().toLocaleDateString('en-CA'))}
