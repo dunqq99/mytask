@@ -23,6 +23,7 @@ import {
 import Board from './components/Board';
 import Dashboard from './components/Dashboard';
 import CardModal from './components/CardModal';
+import TeamManager from './components/TeamManager';
 import Sidebar from './components/Sidebar';
 import Planner from './components/Planner';
 import LoginRegister from './components/LoginRegister';
@@ -310,6 +311,43 @@ export default function App() {
   const isViewingToday = selectedCompletedDate === new Date().toLocaleDateString('en-CA');
 
   const [activeTab, setActiveTab] = useState('dashboard'); // 'board', 'planner', 'partners' or 'dashboard'
+  const [userId, setUserId] = useState('');
+  const [workspaceOwnerId, setWorkspaceOwnerId] = useState(() => localStorage.getItem('zenboard_workspace_owner_id') || '');
+  const [workspaceMembers, setWorkspaceMembers] = useState([]);
+
+  useEffect(() => {
+    if (workspaceOwnerId) {
+      localStorage.setItem('zenboard_workspace_owner_id', workspaceOwnerId);
+    } else {
+      localStorage.removeItem('zenboard_workspace_owner_id');
+    }
+  }, [workspaceOwnerId]);
+
+  useEffect(() => {
+    if (userId && !workspaceOwnerId) {
+      setWorkspaceOwnerId(userId);
+    }
+  }, [userId, workspaceOwnerId]);
+
+  useEffect(() => {
+    if (!token || !workspaceOwnerId) return;
+    const fetchWorkspaceMembers = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/workspace/members?workspaceOwnerId=${workspaceOwnerId}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setWorkspaceMembers(data);
+        }
+      } catch (err) {
+        console.error('Lỗi tải thành viên workspace:', err);
+      }
+    };
+    fetchWorkspaceMembers();
+  }, [token, workspaceOwnerId, activeTab]);
   const [dashboardSubTab, setDashboardSubTab] = useState('tasks'); // 'tasks' or 'partners'
   const [adminSubTab, setAdminSubTab] = useState('members'); // 'members', 'roles', 'plans', 'data'
   const [plannerBacklogFilter, setPlannerBacklogFilter] = useState('all'); // 'all', 'urgent', 'no-due', 'short'
@@ -514,10 +552,12 @@ export default function App() {
       return;
     }
     const loadBoardFromDatabase = async () => {
+      setIsInitialLoaded(false);
       try {
         const response = await fetch(`${API_BASE_URL}/api/board`, {
           headers: {
-            'Authorization': `Bearer ${token}`
+            'Authorization': `Bearer ${token}`,
+            'X-Workspace-Owner-Id': workspaceOwnerId
           }
         });
         if (response.status === 401 || response.status === 403) {
@@ -527,6 +567,9 @@ export default function App() {
         if (!response.ok) throw new Error('Không thể tải dữ liệu từ máy chủ API.');
         
         const data = await response.json();
+        if (data.userId) {
+          setUserId(data.userId);
+        }
         
         if (data.categories && data.columns && data.cards) {
           // Chỉ nạp nếu cơ sở dữ liệu đã có dữ liệu thực tế (tránh nạp trống đè cấu hình)
@@ -607,7 +650,8 @@ export default function App() {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${token}`
+                  'Authorization': `Bearer ${token}`,
+                  'X-Workspace-Owner-Id': workspaceOwnerId
                 },
                 body: JSON.stringify({
                   categories: INITIAL_CATEGORIES,
@@ -647,7 +691,7 @@ export default function App() {
     };
     
     loadBoardFromDatabase();
-  }, [token]);
+  }, [token, workspaceOwnerId]);
 
   const backendSyncTimeoutRef = useRef(null);
 
@@ -684,7 +728,8 @@ export default function App() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
+            'Authorization': `Bearer ${token}`,
+            'X-Workspace-Owner-Id': workspaceOwnerId
           },
           body: JSON.stringify(payload)
         });
@@ -711,7 +756,7 @@ export default function App() {
         clearTimeout(backendSyncTimeoutRef.current);
       }
     };
-  }, [categories, columns, partnerColumns, cards, todaySchedule, workdayDuration, googleSheetUrl, googleSheetDisplayUrl, isAutoSyncEnabled, lastSyncTime, isInitialLoaded, token, shifts, weeklyShifts, tags, partnerTags]);
+  }, [categories, columns, partnerColumns, cards, todaySchedule, workdayDuration, googleSheetUrl, googleSheetDisplayUrl, isAutoSyncEnabled, lastSyncTime, isInitialLoaded, token, shifts, weeklyShifts, tags, partnerTags, workspaceOwnerId]);
 
   const partnerRootId = (() => {
     const partnerCat = categories.find(c => !c.parentId && c.name.includes('Đối tác'));
@@ -1383,6 +1428,17 @@ export default function App() {
             <LayoutDashboard size={14} />
             <span style={{ fontSize: '12.5px' }}>Báo cáo Thống kê</span>
           </button>
+          <button 
+            className={`btn ${activeTab === 'team' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ padding: '6px 14px', borderRadius: '8px', border: 'none' }}
+            onClick={() => {
+              setActiveTab('team');
+              setSelectedFilters([]);
+            }}
+          >
+            <Users size={14} />
+            <span style={{ fontSize: '12.5px' }}>Đội nhóm</span>
+          </button>
           {role === 'admin' && (
             <button 
               className={`btn ${activeTab === 'users' ? 'btn-primary' : 'btn-secondary'}`}
@@ -1651,6 +1707,7 @@ export default function App() {
                 availableTags={isPartnerActive ? partnerTags : tags}
                 selectedCompletedDate={selectedCompletedDate}
                 isViewingToday={isViewingToday}
+                workspaceMembers={workspaceMembers}
               />
             </>
           ) : activeTab === 'planner' ? (
@@ -1683,6 +1740,15 @@ export default function App() {
               setPlanFeatures={setPlanFeatures}
               adminSubTab={adminSubTab}
               setAdminSubTab={setAdminSubTab}
+            />
+          ) : activeTab === 'team' ? (
+            <TeamManager
+              token={token}
+              API_BASE_URL={API_BASE_URL}
+              currentUsername={username}
+              currentUserId={userId}
+              workspaceOwnerId={workspaceOwnerId}
+              setWorkspaceOwnerId={setWorkspaceOwnerId}
             />
           ) : (
             /* Dashboard Render (passing full states to build complete stats) */
@@ -1735,6 +1801,8 @@ export default function App() {
             partnerRootId={partnerRootId}
             userPlan={plan}
             planFeatures={planFeatures}
+            workspaceMembers={workspaceMembers}
+            workspaceOwnerId={workspaceOwnerId}
           />
         );
       })()}

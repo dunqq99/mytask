@@ -71,7 +71,9 @@ export default function CardModal({
   partnerRootId = 'cat-4',
   isReadOnly = false,
   userPlan = 'free',
-  planFeatures = null
+  planFeatures = null,
+  workspaceMembers = [],
+  workspaceOwnerId = ''
 }) {
   const currentFeatures = React.useMemo(() => {
     const DEFAULT_PLAN_FEATURES = {
@@ -100,6 +102,7 @@ export default function CardModal({
   const [categoryId, setCategoryId] = useState('');
   const [linkedPartnerId, setLinkedPartnerId] = useState('');
   const [estimatedDuration, setEstimatedDuration] = useState(0);
+  const [assigneeId, setAssigneeId] = useState('');
 
   // Cấu hình danh sách dịch vụ cho đối tác
   const [services, setServices] = useState([]);
@@ -189,6 +192,7 @@ export default function CardModal({
       setLinkedPartnerId(card.linkedPartnerId || '');
       setEstimatedDuration(card.estimatedDuration || 0);
       setServices(card.services || []);
+      setAssigneeId(card.assigneeId || '');
       setDescTab('edit'); // Reset to edit tab when card changes
 
       if (dialogRef.current && !dialogRef.current.open) {
@@ -1072,6 +1076,43 @@ export default function CardModal({
                   })}
                 </div>
               )}
+            </div>
+
+            {/* Assignee Selection Section */}
+            <div className="sidebar-section" style={{ marginBottom: '16px' }}>
+              <div className="modal-section-title">
+                <Users size={14} style={{ marginRight: '4px' }} />
+                <span>Người thực hiện</span>
+              </div>
+              <div style={{ marginTop: '4px' }}>
+                <select
+                  className="meta-input"
+                  value={assigneeId}
+                  onChange={(e) => {
+                    const val = e.target.value || null;
+                    setAssigneeId(val || '');
+                    saveField('assigneeId', val);
+                  }}
+                  style={{
+                    width: '100%',
+                    background: 'var(--bg-input)',
+                    border: '1px solid var(--border-glass)',
+                    borderRadius: 'var(--border-radius-sm)',
+                    padding: '8px 12px',
+                    color: 'var(--text-primary)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '13px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="">-- Chưa phân công --</option>
+                  {workspaceMembers.map(member => (
+                    <option key={member.id} value={member.id}>
+                      {member.username} ({member.role || 'thành viên'})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {/* Date Range */}

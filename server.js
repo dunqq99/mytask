@@ -178,6 +178,14 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
       await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE`);
       await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS completed_at VARCHAR(50)`);
       await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS linked_partner_id VARCHAR(50)`);
+      await client.query(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS assignee_id VARCHAR(50)`);
+
+      // Bảng thành viên nhóm (Team Members)
+      await client.query(`CREATE TABLE IF NOT EXISTS team_members (
+        owner_id VARCHAR(50) NOT NULL,
+        member_id VARCHAR(50) NOT NULL,
+        PRIMARY KEY (owner_id, member_id)
+      )`);
 
       // Thay đổi Primary Key các bảng thành khóa phức hợp (id, user_id) cho hệ thống nhiều tài khoản
       try {
@@ -649,10 +657,25 @@ app.post('/api/admin/plans/features', authenticateToken, async (req, res) => {
 app.get('/api/board', authenticateToken, async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database chưa kết nối thành công.' });
   
-  const userId = req.user.id;
+  let userId = req.user.id;
+  const currentUserId = req.user.id;
+  const reqOwnerId = req.headers['x-workspace-owner-id'] || req.query.workspaceOwnerId;
+  
   let client;
   try {
     client = await pool.connect();
+
+    // Kiểm tra quyền truy cập workspace
+    if (reqOwnerId && reqOwnerId !== currentUserId) {
+      const checkMem = await client.query('SELECT 1 FROM team_members WHERE owner_id = $1 AND member_id = $2', [reqOwnerId, currentUserId]);
+      if (checkMem.rows.length > 0) {
+        userId = reqOwnerId; // Chuyển ngữ cảnh sang tài khoản trưởng nhóm
+      } else {
+        client.release();
+        return res.status(403).json({ error: 'Bạn không có quyền truy cập workspace này.' });
+      }
+    }
+
     const data = {
       categories: [],
       columns: [],
@@ -682,7 +705,7 @@ app.get('/api/board', authenticateToken, async (req, res) => {
     });
 
     // 3. Tải Cards
-    const cardRes = await client.query('SELECT id, title, description, tags, start_date AS "startDate", due_date AS "dueDate", estimated_duration AS "estimatedDuration", category_id AS "categoryId", checklist, activities, image, services, is_archived AS "isArchived", completed_at AS "completedAt", linked_partner_id AS "linkedPartnerId" FROM cards WHERE user_id = $1', [userId]);
+    const cardRes = await client.query('SELECT id, title, description, tags, start_date AS "startDate", due_date AS "dueDate", estimated_duration AS "estimatedDuration", category_id AS "categoryId", checklist, activities, image, services, is_archived AS "isArchived", completed_at AS "completedAt", linked_partner_id AS "linkedPartnerId", assignee_id AS "assigneeId" FROM cards WHERE user_id = $1', [userId]);
     data.cards = cardRes.rows.map(c => ({
       id: c.id,
       title: c.title,
@@ -698,7 +721,8 @@ app.get('/api/board', authenticateToken, async (req, res) => {
       services: JSON.parse(c.services || '[]'),
       isArchived: !!c.isArchived,
       completedAt: c.completedAt || null,
-      linkedPartnerId: c.linkedPartnerId || null
+      linkedPartnerId: c.linkedPartnerId || null,
+      assigneeId: c.assigneeId || null
     }));
 
 
@@ -736,6 +760,8 @@ app.get('/api/board', authenticateToken, async (req, res) => {
       };
     }
 
+    data.userId = currentUserId; // Trả về ID người dùng đang đăng nhập
+
     client.release();
     res.json(data);
   } catch (err) {
@@ -748,8 +774,10 @@ app.get('/api/board', authenticateToken, async (req, res) => {
 app.post('/api/board/sync', authenticateToken, async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database chưa kết nối thành công.' });
   const { categories, columns, partnerColumns, cards, settings } = req.body;
-  const userId = req.user.id;
+  let userId = req.user.id;
+  const currentUserId = req.user.id;
   const userRole = req.user.role || 'editor';
+  const reqOwnerId = req.headers['x-workspace-owner-id'];
 
   if (userRole === 'viewer') {
     return res.status(403).json({ error: 'Bạn không có quyền chỉnh sửa dữ liệu (Quyền Xem).' });
@@ -759,6 +787,18 @@ app.post('/api/board/sync', authenticateToken, async (req, res) => {
   try {
     client = await pool.connect();
     await client.query('BEGIN');
+
+    // Kiểm tra quyền chỉnh sửa và chuyển đổi ngữ cảnh workspace
+    if (reqOwnerId && reqOwnerId !== currentUserId) {
+      const checkMem = await client.query('SELECT 1 FROM team_members WHERE owner_id = $1 AND member_id = $2', [reqOwnerId, currentUserId]);
+      if (checkMem.rows.length > 0) {
+        userId = reqOwnerId; // Đồng bộ trực tiếp vào workspace của trưởng nhóm
+      } else {
+        await client.query('ROLLBACK');
+        client.release();
+        return res.status(403).json({ error: 'Bạn không có quyền truy cập và chỉnh sửa workspace này.' });
+      }
+    }
 
     // 1. Cập nhật Categories
     await client.query('DELETE FROM categories WHERE user_id = $1', [userId]);
@@ -792,8 +832,8 @@ app.post('/api/board/sync', authenticateToken, async (req, res) => {
     if (Array.isArray(cards) && cards.length > 0) {
       for (const c of cards) {
         await client.query(`INSERT INTO cards 
-          (id, title, description, tags, start_date, due_date, estimated_duration, category_id, checklist, activities, image, services, user_id, is_archived, completed_at, linked_partner_id) 
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`, [
+          (id, title, description, tags, start_date, due_date, estimated_duration, category_id, checklist, activities, image, services, user_id, is_archived, completed_at, linked_partner_id, assignee_id) 
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`, [
             c.id,
             c.title,
             c.description || '',
@@ -809,7 +849,8 @@ app.post('/api/board/sync', authenticateToken, async (req, res) => {
             userId,
             c.isArchived || false,
             c.completedAt || null,
-            c.linkedPartnerId || null
+            c.linkedPartnerId || null,
+            c.assigneeId || null
           ]);
       }
     }
@@ -838,5 +879,141 @@ app.post('/api/board/sync', authenticateToken, async (req, res) => {
       client.release();
     }
     res.status(500).json({ error: 'Lỗi đồng bộ Postgres: ' + err.message });
+  }
+});
+
+// API Lấy danh sách thành viên trong workspace hiện tại (bao gồm Trưởng nhóm và các thành viên khác)
+app.get('/api/workspace/members', authenticateToken, async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database chưa kết nối.' });
+  const workspaceOwnerId = req.query.workspaceOwnerId || req.user.id;
+  
+  let client;
+  try {
+    client = await pool.connect();
+    
+    // Kiểm tra quyền xem workspace
+    const userId = req.user.id;
+    if (workspaceOwnerId !== userId) {
+      const checkMem = await client.query('SELECT 1 FROM team_members WHERE owner_id = $1 AND member_id = $2', [workspaceOwnerId, userId]);
+      if (checkMem.rows.length === 0) {
+        client.release();
+        return res.status(403).json({ error: 'Bạn không có quyền truy cập thông tin workspace này.' });
+      }
+    }
+    
+    // Tải thông tin của trưởng nhóm và các thành viên được mời
+    const membersRes = await client.query(`
+      SELECT id, username FROM users WHERE id = $1
+      UNION
+      SELECT u.id, u.username FROM users u
+      JOIN team_members tm ON tm.member_id = u.id
+      WHERE tm.owner_id = $1
+    `, [workspaceOwnerId]);
+    
+    client.release();
+    res.json(membersRes.rows);
+  } catch (err) {
+    if (client) client.release();
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API Lấy danh sách nhóm của tôi và danh sách nhóm đã tham gia
+app.get('/api/team', authenticateToken, async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database chưa kết nối.' });
+  const userId = req.user.id;
+  
+  let client;
+  try {
+    client = await pool.connect();
+    
+    // Thành viên do tôi mời
+    const membersRes = await client.query(`
+      SELECT u.id, u.username, u.role FROM users u
+      JOIN team_members tm ON tm.member_id = u.id
+      WHERE tm.owner_id = $1
+    `, [userId]);
+    
+    // Nhóm tôi đã tham gia (những người đã mời tôi)
+    const joinedRes = await client.query(`
+      SELECT u.id AS "ownerId", u.username AS "ownerUsername" FROM users u
+      JOIN team_members tm ON tm.owner_id = u.id
+      WHERE tm.member_id = $1
+    `, [userId]);
+    
+    client.release();
+    res.json({
+      myMembers: membersRes.rows,
+      joinedTeams: joinedRes.rows
+    });
+  } catch (err) {
+    if (client) client.release();
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API Mời thành viên bằng Username
+app.post('/api/team/invite', authenticateToken, async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database chưa kết nối.' });
+  const userId = req.user.id;
+  const { username } = req.body;
+  
+  if (!username || !username.trim()) {
+    return res.status(400).json({ error: 'Tên người dùng không được để trống.' });
+  }
+  
+  let client;
+  try {
+    client = await pool.connect();
+    
+    // Tìm ID người dùng được mời
+    const targetUserRes = await client.query('SELECT id FROM users WHERE username = $1', [username.trim()]);
+    if (targetUserRes.rows.length === 0) {
+      client.release();
+      return res.status(404).json({ error: 'Không tìm thấy người dùng trên hệ thống.' });
+    }
+    
+    const targetUserId = targetUserRes.rows[0].id;
+    if (targetUserId === userId) {
+      client.release();
+      return res.status(400).json({ error: 'Bạn không thể tự mời chính mình vào nhóm.' });
+    }
+    
+    // Lưu vào bảng team_members
+    await client.query(`
+      INSERT INTO team_members (owner_id, member_id)
+      VALUES ($1, $2)
+      ON CONFLICT (owner_id, member_id) DO NOTHING
+    `, [userId, targetUserId]);
+    
+    client.release();
+    res.json({ success: true, message: 'Đã mời thành viên vào nhóm thành công!' });
+  } catch (err) {
+    if (client) client.release();
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API Xóa thành viên khỏi nhóm của mình
+app.post('/api/team/remove', authenticateToken, async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database chưa kết nối.' });
+  const userId = req.user.id;
+  const { memberId } = req.body;
+  
+  if (!memberId) {
+    return res.status(400).json({ error: 'ID thành viên không hợp lệ.' });
+  }
+  
+  let client;
+  try {
+    client = await pool.connect();
+    
+    await client.query('DELETE FROM team_members WHERE owner_id = $1 AND member_id = $2', [userId, memberId]);
+    
+    client.release();
+    res.json({ success: true, message: 'Đã xóa thành viên khỏi nhóm.' });
+  } catch (err) {
+    if (client) client.release();
+    res.status(500).json({ error: err.message });
   }
 });

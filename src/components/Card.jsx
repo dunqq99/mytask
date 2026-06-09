@@ -17,8 +17,8 @@ const TAG_COLORS = {
   service: { bg: '#fffbeb', text: '#d97706', label: 'Dịch vụ' }
 };
 
-export default function Card({ card, columnId, columnColor, categories = [], onCardClick, onDragStart, onDragEnd, onDragOverCard, availableTags = [], allCards = [], isViewingToday = true }) {
-  const { id, title, description, tags = [], dueDate, startDate, checklist = [], image, categoryId, estimatedDuration, services = [], linkedPartnerId } = card;
+export default function Card({ card, columnId, columnColor, categories = [], onCardClick, onDragStart, onDragEnd, onDragOverCard, availableTags = [], allCards = [], isViewingToday = true, workspaceMembers = [] }) {
+  const { id, title, description, tags = [], dueDate, startDate, checklist = [], image, categoryId, estimatedDuration, services = [], linkedPartnerId, assigneeId } = card;
   
   // Find partner root category ID dynamically
   const partnerRootCat = categories.find(c => !c.parentId && c.name.includes('Đối tác'));
@@ -44,6 +44,9 @@ export default function Card({ card, columnId, columnColor, categories = [], onC
 
   // Suppress category badge if it's the partner root category
   const category = (categoryId && categoryId !== partnerRootId) ? categories.find(c => c.id === categoryId) : null;
+
+  // Find assignee info
+  const assignee = assigneeId ? workspaceMembers.find(m => m.id === assigneeId) : null;
 
   // Format estimated duration helper
   const formatDuration = (mins) => {
@@ -235,9 +238,9 @@ export default function Card({ card, columnId, columnColor, categories = [], onC
       )}
 
       {/* Footer / Meta Info */}
-      {(startDate || dueDate || totalChecklist > 0 || description || estimatedDuration > 0) && (
-        <div className="card-footer">
-          <div className="card-meta-item" style={{ gap: '8px' }}>
+      {(startDate || dueDate || totalChecklist > 0 || description || estimatedDuration > 0 || assignee) && (
+        <div className="card-footer" style={{ flexWrap: 'wrap', gap: '8px' }}>
+          <div className="card-meta-item" style={{ gap: '8px', flexWrap: 'wrap' }}>
             {description && (
               <span className="card-meta-item" title="Có mô tả chi tiết">
                 <AlignLeft size={12} />
@@ -260,6 +263,22 @@ export default function Card({ card, columnId, columnColor, categories = [], onC
               <span className="card-meta-item" title={`Thời gian ước lượng: ${estimatedDuration} phút`} style={{ gap: '2px' }}>
                 <Timer size={12} style={{ opacity: 0.8 }} />
                 <span>{formatDuration(estimatedDuration)}</span>
+              </span>
+            )}
+            {assignee && (
+              <span className="card-meta-item" title={`Người thực hiện: ${assignee.username}`} style={{
+                background: 'rgba(59, 130, 246, 0.1)',
+                color: '#60a5fa',
+                padding: '2px 6px',
+                borderRadius: '4px',
+                fontSize: '11px',
+                fontWeight: '500',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}>
+                <span style={{ fontSize: '10px' }}>👤</span>
+                <span>{assignee.username}</span>
               </span>
             )}
           </div>

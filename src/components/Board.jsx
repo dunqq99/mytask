@@ -26,7 +26,8 @@ export default function Board({
   availableTags = [],
   allCards = [],
   selectedCompletedDate = new Date().toLocaleDateString('en-CA'),
-  isViewingToday = true
+  isViewingToday = true,
+  workspaceMembers = []
 }) {
   const [isAddingColumn, setIsAddingColumn] = useState(false);
   const [newColumnTitle, setNewColumnTitle] = useState('');
@@ -74,6 +75,7 @@ export default function Board({
             columnCustomization={columnCustomization}
             availableTags={availableTags}
             isViewingToday={isViewingToday}
+            workspaceMembers={workspaceMembers}
           />
         );
       })}

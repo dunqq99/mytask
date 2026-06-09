@@ -23,7 +23,8 @@ export default function Column({
   userPlan = 'free',
   availableTags = [],
   allCards = [],
-  isViewingToday = true
+  isViewingToday = true,
+  workspaceMembers = []
 }) {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState(column.title);
@@ -289,6 +290,7 @@ export default function Column({
             onDragOverCard={onDragOverCard}
             availableTags={availableTags}
             isViewingToday={isViewingToday}
+            workspaceMembers={workspaceMembers}
           />
         ))}
       </div>
