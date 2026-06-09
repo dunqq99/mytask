@@ -1115,9 +1115,10 @@ export default function CardModal({
                         default: return 'Thành viên';
                       }
                     };
+                    const roleLabel = member.roleName || getRoleLabel(member.role);
                     return (
                       <option key={member.id} value={member.id}>
-                        {member.username} ({getRoleLabel(member.role)})
+                        {member.username} ({roleLabel})
                       </option>
                     );
                   })}

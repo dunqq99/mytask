@@ -20,6 +20,8 @@ export default function TeamManager({
   const [inviteUsername, setInviteUsername] = useState('');
   const [myMembers, setMyMembers] = useState([]);
   const [joinedTeams, setJoinedTeams] = useState([]);
+  const [myTeamName, setMyTeamName] = useState('');
+  const [teamRoles, setTeamRoles] = useState([]);
   
   const [loading, setLoading] = useState(false);
   const [inviteLoading, setInviteLoading] = useState(false);
@@ -43,6 +45,7 @@ export default function TeamManager({
       const data = await response.json();
       setMyMembers(data.myMembers || []);
       setJoinedTeams(data.joinedTeams || []);
+      setMyTeamName(data.myTeamName || '');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -50,9 +53,24 @@ export default function TeamManager({
     }
   };
 
+  const fetchTeamRoles = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/team-roles`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTeamRoles(data);
+      }
+    } catch (err) {
+      console.error('Lỗi tải vai trò động:', err);
+    }
+  };
+
   useEffect(() => {
     if (token) {
       fetchTeamData();
+      fetchTeamRoles();
     }
   }, [token]);
 
@@ -203,7 +221,7 @@ export default function TeamManager({
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Users size={16} style={{ color: 'var(--primary)' }} />
-                <span>Đội nhóm của tôi ({myMembers.length})</span>
+                <span>{myTeamName ? `Đội nhóm của tôi: ${myTeamName}` : 'Đội nhóm của tôi'} ({myMembers.length})</span>
               </h3>
               <button 
                 onClick={fetchTeamData} 
@@ -236,7 +254,7 @@ export default function TeamManager({
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-secondary)' }}>
                         <span>Vai trò tổ đội:</span>
                         <select
-                          value={m.role || 'StaffVH'}
+                          value={m.role || (teamRoles.length > 0 ? teamRoles[0].roleKey : 'StaffVH')}
                           onChange={(e) => handleUpdateRole(m.id, e.target.value)}
                           style={{
                             padding: '2px 6px',
@@ -249,8 +267,9 @@ export default function TeamManager({
                             outline: 'none'
                           }}
                         >
-                          <option value="StaffVH" style={{ background: '#18181b', color: '#fff' }}>Nhân viên Vận hành</option>
-                          <option value="StaffMKT" style={{ background: '#18181b', color: '#fff' }}>Nhân viên Marketing</option>
+                          {teamRoles.map(tr => (
+                            <option key={tr.roleKey} value={tr.roleKey} style={{ background: '#18181b', color: '#fff' }}>{tr.roleName}</option>
+                          ))}
                         </select>
                       </div>
                     </div>
@@ -302,7 +321,7 @@ export default function TeamManager({
                   }}>
                     <div>
                       <div style={{ fontSize: '13.5px', fontWeight: '600' }}>
-                        Trưởng nhóm: {t.ownerUsername}
+                        Trưởng nhóm: {t.ownerUsername} {t.teamName && <span style={{ color: '#a855f7', fontWeight: 'normal', fontSize: '12.5px' }}>({t.teamName})</span>}
                       </div>
                       <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
                         Đồng tác viên (Nhận và thực hiện các công việc được giao)

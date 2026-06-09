@@ -191,6 +191,28 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
       )`);
       await client.query(`ALTER TABLE team_members ADD COLUMN IF NOT EXISTS team_role VARCHAR(50) DEFAULT 'StaffVH'`);
 
+      // Bảng tên đội nhóm (Teams)
+      await client.query(`CREATE TABLE IF NOT EXISTS teams (
+        owner_id VARCHAR(50) PRIMARY KEY,
+        team_name VARCHAR(255) NOT NULL
+      )`);
+
+      // Bảng vai trò đội nhóm động (Team Roles)
+      await client.query(`CREATE TABLE IF NOT EXISTS team_roles (
+        role_key VARCHAR(50) PRIMARY KEY,
+        role_name VARCHAR(255) NOT NULL
+      )`);
+
+      // Seed mặc định cho vai trò động
+      const trCount = await client.query('SELECT COUNT(*) FROM team_roles');
+      if (parseInt(trCount.rows[0].count, 10) === 0) {
+        await client.query(`
+          INSERT INTO team_roles (role_key, role_name) VALUES 
+          ('StaffVH', 'StaffVH (Vận hành)'),
+          ('StaffMKT', 'StaffMKT (Marketing)')
+        `);
+      }
+
       // Thay đổi Primary Key các bảng thành khóa phức hợp (id, user_id) cho hệ thống nhiều tài khoản
       try {
         await client.query(`UPDATE categories SET user_id = 'default' WHERE user_id IS NULL`);
@@ -767,25 +789,52 @@ app.get('/api/admin/teams', authenticateToken, async (req, res) => {
     
     const query = `
       SELECT tm.owner_id AS "ownerId", u_owner.username AS "ownerUsername",
+             t.team_name AS "teamName",
              tm.member_id AS "memberId", u_member.username AS "memberUsername",
              tm.team_role AS "teamRole"
       FROM team_members tm
       JOIN users u_owner ON tm.owner_id = u_owner.id
       JOIN users u_member ON tm.member_id = u_member.id
+      LEFT JOIN teams t ON tm.owner_id = t.owner_id
       ORDER BY u_owner.username, u_member.username
     `;
     const result = await client.query(query);
+
+    // Lấy thêm những đội nhóm có tên tùy chỉnh nhưng chưa có thành viên nào
+    const emptyTeamsRes = await client.query(`
+      SELECT t.owner_id AS "ownerId", u.username AS "ownerUsername", t.team_name AS "teamName"
+      FROM teams t
+      JOIN users u ON t.owner_id = u.id
+      WHERE t.owner_id NOT IN (SELECT DISTINCT owner_id FROM team_members)
+    `);
+
     client.release();
     
     // Group by ownerId
     const teamsMap = {};
+
+    // First, add all defined teams (even empty ones)
+    emptyTeamsRes.rows.forEach(row => {
+      teamsMap[row.ownerId] = {
+        ownerId: row.ownerId,
+        ownerUsername: row.ownerUsername,
+        teamName: row.teamName,
+        members: []
+      };
+    });
+
     result.rows.forEach(row => {
       if (!teamsMap[row.ownerId]) {
         teamsMap[row.ownerId] = {
           ownerId: row.ownerId,
           ownerUsername: row.ownerUsername,
+          teamName: row.teamName || '',
           members: []
         };
+      }
+      // If teamName was null from the team_members rows, but we set it or it was retrieved, make sure it is updated
+      if (row.teamName && !teamsMap[row.ownerId].teamName) {
+        teamsMap[row.ownerId].teamName = row.teamName;
       }
       teamsMap[row.ownerId].members.push({
         memberId: row.memberId,
@@ -803,7 +852,7 @@ app.get('/api/admin/teams', authenticateToken, async (req, res) => {
 
 // API lưu đội nhóm thủ công (Chỉ Admin)
 app.post('/api/admin/teams/save', authenticateToken, async (req, res) => {
-  const { ownerId, members } = req.body;
+  const { ownerId, teamName, members } = req.body;
   if (!ownerId) {
     return res.status(400).json({ error: 'Thiếu thông tin trưởng nhóm (Manager ID).' });
   }
@@ -820,19 +869,35 @@ app.post('/api/admin/teams/save', authenticateToken, async (req, res) => {
     }
     
     await client.query('BEGIN');
+
+    // Lưu tên đội nhóm
+    if (teamName && teamName.trim()) {
+      await client.query(`
+        INSERT INTO teams (owner_id, team_name) 
+        VALUES ($1, $2)
+        ON CONFLICT (owner_id) 
+        DO UPDATE SET team_name = EXCLUDED.team_name
+      `, [ownerId, teamName.trim()]);
+    } else {
+      await client.query('DELETE FROM teams WHERE owner_id = $1', [ownerId]);
+    }
     
     // Xóa các thành viên cũ
     await client.query('DELETE FROM team_members WHERE owner_id = $1', [ownerId]);
     
     // Thêm các thành viên mới
     if (Array.isArray(members) && members.length > 0) {
+      // Lấy vai trò mặc định đề phòng
+      const trRes = await client.query('SELECT role_key FROM team_roles LIMIT 1');
+      const defaultRole = trRes.rowCount > 0 ? trRes.rows[0].role_key : 'StaffVH';
+
       for (const m of members) {
         if (m.memberId === ownerId) {
           throw new Error('Trưởng nhóm không thể làm thành viên của chính mình.');
         }
         await client.query(
           'INSERT INTO team_members (owner_id, member_id, team_role) VALUES ($1, $2, $3)',
-          [ownerId, m.memberId, m.teamRole || 'StaffVH']
+          [ownerId, m.memberId, m.teamRole || defaultRole]
         );
       }
     }
@@ -867,12 +932,119 @@ app.delete('/api/admin/teams/:ownerId', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Bạn không có quyền thực hiện chức năng này.' });
     }
     
+    await client.query('BEGIN');
     await client.query('DELETE FROM team_members WHERE owner_id = $1', [ownerId]);
+    await client.query('DELETE FROM teams WHERE owner_id = $1', [ownerId]);
+    await client.query('COMMIT');
+
     client.release();
     res.json({ status: 'success', message: 'Đã giải tán đội nhóm thành công!' });
   } catch (err) {
-    if (client) client.release();
+    if (client) {
+      try { await client.query('ROLLBACK'); } catch (e) {}
+      client.release();
+    }
     res.status(500).json({ error: 'Lỗi giải tán đội nhóm: ' + err.message });
+  }
+});
+
+// API lấy danh sách vai trò đội nhóm động (Cho cả Admin và Manager/User)
+app.get('/api/team-roles', authenticateToken, async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database chưa kết nối.' });
+  let client;
+  try {
+    client = await pool.connect();
+    const result = await client.query('SELECT role_key AS "roleKey", role_name AS "roleName" FROM team_roles ORDER BY role_key');
+    client.release();
+    res.json(result.rows);
+  } catch (err) {
+    if (client) client.release();
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API lưu mới hoặc cập nhật vai trò đội nhóm (Chỉ Admin)
+app.post('/api/admin/team-roles/save', authenticateToken, async (req, res) => {
+  const { roleKey, roleName } = req.body;
+  if (!roleKey || !roleName) {
+    return res.status(400).json({ error: 'Thiếu thông tin vai trò (Mã hoặc Tên hiển thị).' });
+  }
+
+  const cleanRoleKey = roleKey.trim();
+  const cleanRoleName = roleName.trim();
+
+  let client;
+  try {
+    client = await pool.connect();
+    
+    // Kiểm tra trực tiếp role của user từ Database
+    const roleCheck = await client.query('SELECT role FROM users WHERE id = $1', [req.user.id]);
+    if (roleCheck.rowCount === 0 || roleCheck.rows[0].role !== 'admin') {
+      client.release();
+      return res.status(403).json({ error: 'Bạn không có quyền thực hiện chức năng này.' });
+    }
+
+    await client.query(`
+      INSERT INTO team_roles (role_key, role_name) 
+      VALUES ($1, $2)
+      ON CONFLICT (role_key) 
+      DO UPDATE SET role_name = EXCLUDED.role_name
+    `, [cleanRoleKey, cleanRoleName]);
+
+    client.release();
+    res.json({ status: 'success', message: 'Lưu vai trò đội nhóm thành công!' });
+  } catch (err) {
+    if (client) client.release();
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API xóa vai trò đội nhóm (Chỉ Admin)
+app.delete('/api/admin/team-roles/:roleKey', authenticateToken, async (req, res) => {
+  const { roleKey } = req.params;
+  if (!roleKey) {
+    return res.status(400).json({ error: 'Thiếu mã vai trò.' });
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+    
+    // Kiểm tra trực tiếp role của user từ Database
+    const roleCheck = await client.query('SELECT role FROM users WHERE id = $1', [req.user.id]);
+    if (roleCheck.rowCount === 0 || roleCheck.rows[0].role !== 'admin') {
+      client.release();
+      return res.status(403).json({ error: 'Bạn không có quyền thực hiện chức năng này.' });
+    }
+
+    // Đảm bảo không xóa nếu đó là vai trò duy nhất còn lại
+    const countRes = await client.query('SELECT COUNT(*) FROM team_roles');
+    if (parseInt(countRes.rows[0].count, 10) <= 1) {
+      client.release();
+      return res.status(400).json({ error: 'Không thể xóa vai trò duy nhất còn lại của hệ thống.' });
+    }
+
+    await client.query('BEGIN');
+
+    // Xóa vai trò
+    await client.query('DELETE FROM team_roles WHERE role_key = $1', [roleKey]);
+
+    // Lấy một vai trò còn lại làm fallback
+    const fallbackRes = await client.query('SELECT role_key FROM team_roles LIMIT 1');
+    const fallbackKey = fallbackRes.rows[0].role_key;
+
+    // Cập nhật các thành viên có vai trò bị xóa về vai trò fallback
+    await client.query('UPDATE team_members SET team_role = $1 WHERE team_role = $2', [fallbackKey, roleKey]);
+
+    await client.query('COMMIT');
+    client.release();
+    res.json({ status: 'success', message: 'Xóa vai trò đội nhóm thành công và đã cập nhật thành viên!' });
+  } catch (err) {
+    if (client) {
+      try { await client.query('ROLLBACK'); } catch (e) {}
+      client.release();
+    }
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -1163,8 +1335,9 @@ app.get('/api/workspace/members', authenticateToken, async (req, res) => {
     const managerRes = await client.query('SELECT id, username FROM users WHERE id = $1', [managerId]);
     // Lấy thông tin các thành viên trong nhóm
     const membersRes = await client.query(`
-      SELECT u.id, u.username, tm.team_role FROM users u
+      SELECT u.id, u.username, tm.team_role, tr.role_name FROM users u
       JOIN team_members tm ON tm.member_id = u.id
+      LEFT JOIN team_roles tr ON tm.team_role = tr.role_key
       WHERE tm.owner_id = $1
     `, [managerId]);
 
@@ -1173,7 +1346,8 @@ app.get('/api/workspace/members', authenticateToken, async (req, res) => {
       finalMembers.push({
         id: managerRes.rows[0].id,
         username: managerRes.rows[0].username,
-        role: 'MNG'
+        role: 'MNG',
+        roleName: 'Trưởng nhóm'
       });
     }
 
@@ -1181,14 +1355,15 @@ app.get('/api/workspace/members', authenticateToken, async (req, res) => {
       finalMembers.push({
         id: row.id,
         username: row.username,
-        role: row.team_role || 'StaffVH'
+        role: row.team_role || 'StaffVH',
+        roleName: row.role_name || row.team_role || 'Thành viên'
       });
     }
 
     // 4. Lọc thành viên có thể giao việc dựa trên vai trò đội nhóm của user đang đăng nhập
     let filteredMembers = finalMembers;
-    if (userTeamRole === 'StaffVH' || userTeamRole === 'StaffMKT') {
-      // StaffVH và StaffMKT không thể phân công công việc cho Trưởng nhóm (MNG)
+    if (userTeamRole !== 'MNG') {
+      // Thành viên không thể phân công công việc cho Trưởng nhóm (MNG)
       filteredMembers = finalMembers.filter(m => m.role !== 'MNG');
     }
 
@@ -1209,6 +1384,10 @@ app.get('/api/team', authenticateToken, async (req, res) => {
   try {
     client = await pool.connect();
     
+    // Tên nhóm của tôi
+    const ownTeamRes = await client.query('SELECT team_name FROM teams WHERE owner_id = $1', [userId]);
+    const myTeamName = ownTeamRes.rowCount > 0 ? ownTeamRes.rows[0].team_name : '';
+
     // Thành viên do tôi mời (lấy vai trò đội nhóm tm.team_role)
     const membersRes = await client.query(`
       SELECT u.id, u.username, tm.team_role AS "role" FROM users u
@@ -1218,15 +1397,22 @@ app.get('/api/team', authenticateToken, async (req, res) => {
     
     // Nhóm tôi đã tham gia (những người đã mời tôi)
     const joinedRes = await client.query(`
-      SELECT u.id AS "ownerId", u.username AS "ownerUsername" FROM users u
+      SELECT u.id AS "ownerId", u.username AS "ownerUsername", t.team_name AS "teamName"
+      FROM users u
       JOIN team_members tm ON tm.owner_id = u.id
+      LEFT JOIN teams t ON t.owner_id = u.id
       WHERE tm.member_id = $1
     `, [userId]);
     
     client.release();
     res.json({
+      myTeamName,
       myMembers: membersRes.rows,
-      joinedTeams: joinedRes.rows
+      joinedTeams: joinedRes.rows.map(row => ({
+        ownerId: row.ownerId,
+        ownerUsername: row.ownerUsername,
+        teamName: row.teamName || ''
+      }))
     });
   } catch (err) {
     if (client) client.release();
@@ -1261,12 +1447,16 @@ app.post('/api/team/invite', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Bạn không thể tự mời chính mình vào nhóm.' });
     }
     
-    // Lưu vào bảng team_members với team_role mặc định là StaffVH
+    // Lấy vai trò mặc định đề phòng
+    const trRes = await client.query('SELECT role_key FROM team_roles LIMIT 1');
+    const defaultRole = trRes.rowCount > 0 ? trRes.rows[0].role_key : 'StaffVH';
+
+    // Lưu vào bảng team_members với team_role mặc định
     await client.query(`
       INSERT INTO team_members (owner_id, member_id, team_role)
-      VALUES ($1, $2, 'StaffVH')
+      VALUES ($1, $2, $3)
       ON CONFLICT (owner_id, member_id) DO NOTHING
-    `, [userId, targetUserId]);
+    `, [userId, targetUserId, defaultRole]);
     
     client.release();
     res.json({ success: true, message: 'Đã mời thành viên vào nhóm thành công!' });
@@ -1286,14 +1476,16 @@ app.post('/api/team/update-role', authenticateToken, async (req, res) => {
     return res.status(400).json({ error: 'Thiếu thông tin thành viên hoặc vai trò.' });
   }
   
-  const validRoles = ['StaffMKT', 'StaffVH'];
-  if (!validRoles.includes(role)) {
-    return res.status(400).json({ error: 'Vai trò đội nhóm không hợp lệ.' });
-  }
-  
   let client;
   try {
     client = await pool.connect();
+
+    // Kiểm tra vai trò động có hợp lệ không
+    const roleCheck = await client.query('SELECT 1 FROM team_roles WHERE role_key = $1', [role]);
+    if (roleCheck.rowCount === 0) {
+      client.release();
+      return res.status(400).json({ error: 'Vai trò đội nhóm không hợp lệ.' });
+    }
     
     // Kiểm tra xem memberId có phải là thành viên trong nhóm của userId không
     const checkRes = await client.query(
