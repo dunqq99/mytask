@@ -752,10 +752,138 @@ app.post('/api/admin/plans/features', authenticateToken, async (req, res) => {
   }
 });
 
+// API lấy toàn bộ danh sách đội nhóm (Chỉ Admin)
+app.get('/api/admin/teams', authenticateToken, async (req, res) => {
+  let client;
+  try {
+    client = await pool.connect();
+    
+    // Kiểm tra trực tiếp role của user từ Database
+    const roleCheck = await client.query('SELECT role FROM users WHERE id = $1', [req.user.id]);
+    if (roleCheck.rowCount === 0 || roleCheck.rows[0].role !== 'admin') {
+      client.release();
+      return res.status(403).json({ error: 'Bạn không có quyền thực hiện chức năng này.' });
+    }
+    
+    const query = `
+      SELECT tm.owner_id AS "ownerId", u_owner.username AS "ownerUsername",
+             tm.member_id AS "memberId", u_member.username AS "memberUsername",
+             tm.team_role AS "teamRole"
+      FROM team_members tm
+      JOIN users u_owner ON tm.owner_id = u_owner.id
+      JOIN users u_member ON tm.member_id = u_member.id
+      ORDER BY u_owner.username, u_member.username
+    `;
+    const result = await client.query(query);
+    client.release();
+    
+    // Group by ownerId
+    const teamsMap = {};
+    result.rows.forEach(row => {
+      if (!teamsMap[row.ownerId]) {
+        teamsMap[row.ownerId] = {
+          ownerId: row.ownerId,
+          ownerUsername: row.ownerUsername,
+          members: []
+        };
+      }
+      teamsMap[row.ownerId].members.push({
+        memberId: row.memberId,
+        memberUsername: row.memberUsername,
+        teamRole: row.teamRole
+      });
+    });
+    
+    res.json(Object.values(teamsMap));
+  } catch (err) {
+    if (client) client.release();
+    res.status(500).json({ error: 'Lỗi lấy danh sách đội nhóm: ' + err.message });
+  }
+});
+
+// API lưu đội nhóm thủ công (Chỉ Admin)
+app.post('/api/admin/teams/save', authenticateToken, async (req, res) => {
+  const { ownerId, members } = req.body;
+  if (!ownerId) {
+    return res.status(400).json({ error: 'Thiếu thông tin trưởng nhóm (Manager ID).' });
+  }
+  
+  let client;
+  try {
+    client = await pool.connect();
+    
+    // Kiểm tra trực tiếp role của user từ Database
+    const roleCheck = await client.query('SELECT role FROM users WHERE id = $1', [req.user.id]);
+    if (roleCheck.rowCount === 0 || roleCheck.rows[0].role !== 'admin') {
+      client.release();
+      return res.status(403).json({ error: 'Bạn không có quyền thực hiện chức năng này.' });
+    }
+    
+    await client.query('BEGIN');
+    
+    // Xóa các thành viên cũ
+    await client.query('DELETE FROM team_members WHERE owner_id = $1', [ownerId]);
+    
+    // Thêm các thành viên mới
+    if (Array.isArray(members) && members.length > 0) {
+      for (const m of members) {
+        if (m.memberId === ownerId) {
+          throw new Error('Trưởng nhóm không thể làm thành viên của chính mình.');
+        }
+        await client.query(
+          'INSERT INTO team_members (owner_id, member_id, team_role) VALUES ($1, $2, $3)',
+          [ownerId, m.memberId, m.teamRole || 'StaffVH']
+        );
+      }
+    }
+    
+    await client.query('COMMIT');
+    client.release();
+    res.json({ status: 'success', message: 'Cấu hình đội nhóm thành công!' });
+  } catch (err) {
+    if (client) {
+      try { await client.query('ROLLBACK'); } catch (e) {}
+      client.release();
+    }
+    res.status(500).json({ error: 'Lỗi cấu hình đội nhóm: ' + err.message });
+  }
+});
+
+// API giải tán đội nhóm thủ công (Chỉ Admin)
+app.delete('/api/admin/teams/:ownerId', authenticateToken, async (req, res) => {
+  const { ownerId } = req.params;
+  if (!ownerId) {
+    return res.status(400).json({ error: 'Thiếu thông tin trưởng nhóm.' });
+  }
+  
+  let client;
+  try {
+    client = await pool.connect();
+    
+    // Kiểm tra trực tiếp role của user từ Database
+    const roleCheck = await client.query('SELECT role FROM users WHERE id = $1', [req.user.id]);
+    if (roleCheck.rowCount === 0 || roleCheck.rows[0].role !== 'admin') {
+      client.release();
+      return res.status(403).json({ error: 'Bạn không có quyền thực hiện chức năng này.' });
+    }
+    
+    await client.query('DELETE FROM team_members WHERE owner_id = $1', [ownerId]);
+    client.release();
+    res.json({ status: 'success', message: 'Đã giải tán đội nhóm thành công!' });
+  } catch (err) {
+    if (client) client.release();
+    res.status(500).json({ error: 'Lỗi giải tán đội nhóm: ' + err.message });
+  }
+});
+
 // API Tải dữ liệu ban đầu
 app.get('/api/board', authenticateToken, async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database chưa kết nối thành công.' });
   
+  if (req.user.role === 'admin') {
+    return res.status(403).json({ error: 'Quản trị viên không có quyền quản lý bảng công việc.' });
+  }
+
   const userId = req.user.id;
   
   let client;
@@ -870,6 +998,11 @@ app.get('/api/board', authenticateToken, async (req, res) => {
 // API Đồng bộ hóa toàn bộ trạng thái (Bulk Sync)
 app.post('/api/board/sync', authenticateToken, async (req, res) => {
   if (!pool) return res.status(500).json({ error: 'Database chưa kết nối thành công.' });
+  
+  if (req.user.role === 'admin') {
+    return res.status(403).json({ error: 'Quản trị viên không có quyền quản lý bảng công việc.' });
+  }
+
   const { categories, columns, partnerColumns, cards, settings } = req.body;
   const userId = req.user.id;
   const userRole = req.user.role || 'editor';

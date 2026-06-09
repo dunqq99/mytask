@@ -243,6 +243,11 @@ export default function App() {
     setUsername(newUsername);
     setRole(newRole || 'editor');
     setPlan(newPlan || 'free');
+    if (newRole === 'admin') {
+      setActiveTab('users');
+    } else {
+      setActiveTab('dashboard');
+    }
     setIsInitialLoaded(false); // Trigger database load
   };
 
@@ -333,6 +338,13 @@ export default function App() {
     };
     fetchWorkspaceMembers();
   }, [token, activeTab]);
+
+  useEffect(() => {
+    if (token && role === 'admin' && activeTab !== 'users') {
+      setActiveTab('users');
+    }
+  }, [token, role, activeTab]);
+
   const [dashboardSubTab, setDashboardSubTab] = useState('tasks'); // 'tasks' or 'partners'
   const [adminSubTab, setAdminSubTab] = useState('members'); // 'members', 'roles', 'plans', 'data'
   const [plannerBacklogFilter, setPlannerBacklogFilter] = useState('all'); // 'all', 'urgent', 'no-due', 'short'
@@ -536,6 +548,11 @@ export default function App() {
       setIsInitialLoaded(true);
       return;
     }
+    if (role === 'admin') {
+      setIsInitialLoaded(true);
+      setIsBackendConnected(true);
+      return;
+    }
     const loadBoardFromDatabase = async () => {
       setIsInitialLoaded(false);
       try {
@@ -735,7 +752,7 @@ export default function App() {
 
   // Tự động đồng bộ sang PostgreSQL Database (Debounced 1.5 giây)
   useEffect(() => {
-    if (!isInitialLoaded || !token) return;
+    if (!isInitialLoaded || !token || role === 'admin') return;
 
     if (backendSyncTimeoutRef.current) {
       clearTimeout(backendSyncTimeoutRef.current);
@@ -1418,65 +1435,7 @@ export default function App() {
 
         {/* Navigation Tabs */}
         <div style={{ display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.05)', padding: '4px', borderRadius: '10px' }}>
-          <button 
-            className={`btn ${activeTab === 'board' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ padding: '6px 14px', borderRadius: '8px', border: 'none' }}
-            onClick={() => {
-              setActiveTab('board');
-              setActiveCategoryId('all');
-              setSelectedFilters([]);
-            }}
-          >
-            <KanbanSquare size={14} />
-            <span style={{ fontSize: '12.5px' }}>Bảng công việc</span>
-          </button>
-          <button 
-            className={`btn ${activeTab === 'planner' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ padding: '6px 14px', borderRadius: '8px', border: 'none' }}
-            onClick={() => {
-              setActiveTab('planner');
-              setActiveCategoryId('all');
-              setSelectedFilters([]);
-            }}
-          >
-            <CalendarDays size={14} />
-            <span style={{ fontSize: '12.5px' }}>Lập kế hoạch</span>
-          </button>
-          <button 
-            className={`btn ${activeTab === 'partners' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ padding: '6px 14px', borderRadius: '8px', border: 'none' }}
-            onClick={() => {
-              setActiveTab('partners');
-              setActiveCategoryId(partnerRootId);
-              setSelectedFilters([]);
-            }}
-          >
-            <Users size={14} />
-            <span style={{ fontSize: '12.5px' }}>Bảng Đối tác</span>
-          </button>
-          <button 
-            className={`btn ${activeTab === 'dashboard' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ padding: '6px 14px', borderRadius: '8px', border: 'none' }}
-            onClick={() => {
-              setActiveTab('dashboard');
-              setSelectedFilters([]);
-            }}
-          >
-            <LayoutDashboard size={14} />
-            <span style={{ fontSize: '12.5px' }}>Báo cáo Thống kê</span>
-          </button>
-          <button 
-            className={`btn ${activeTab === 'team' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ padding: '6px 14px', borderRadius: '8px', border: 'none' }}
-            onClick={() => {
-              setActiveTab('team');
-              setSelectedFilters([]);
-            }}
-          >
-            <Users size={14} />
-            <span style={{ fontSize: '12.5px' }}>Đội nhóm</span>
-          </button>
-          {role === 'admin' && (
+          {role === 'admin' ? (
             <button 
               className={`btn ${activeTab === 'users' ? 'btn-primary' : 'btn-secondary'}`}
               style={{ padding: '6px 14px', borderRadius: '8px', border: 'none' }}
@@ -1486,8 +1445,69 @@ export default function App() {
               }}
             >
               <Users size={14} />
-              <span style={{ fontSize: '12.5px' }}>Quản lý thành viên</span>
+              <span style={{ fontSize: '12.5px' }}>Quản trị hệ thống</span>
             </button>
+          ) : (
+            <>
+              <button 
+                className={`btn ${activeTab === 'board' ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ padding: '6px 14px', borderRadius: '8px', border: 'none' }}
+                onClick={() => {
+                  setActiveTab('board');
+                  setActiveCategoryId('all');
+                  setSelectedFilters([]);
+                }}
+              >
+                <KanbanSquare size={14} />
+                <span style={{ fontSize: '12.5px' }}>Bảng công việc</span>
+              </button>
+              <button 
+                className={`btn ${activeTab === 'planner' ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ padding: '6px 14px', borderRadius: '8px', border: 'none' }}
+                onClick={() => {
+                  setActiveTab('planner');
+                  setActiveCategoryId('all');
+                  setSelectedFilters([]);
+                }}
+              >
+                <CalendarDays size={14} />
+                <span style={{ fontSize: '12.5px' }}>Lập kế hoạch</span>
+              </button>
+              <button 
+                className={`btn ${activeTab === 'partners' ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ padding: '6px 14px', borderRadius: '8px', border: 'none' }}
+                onClick={() => {
+                  setActiveTab('partners');
+                  setActiveCategoryId(partnerRootId);
+                  setSelectedFilters([]);
+                }}
+              >
+                <Users size={14} />
+                <span style={{ fontSize: '12.5px' }}>Bảng Đối tác</span>
+              </button>
+              <button 
+                className={`btn ${activeTab === 'dashboard' ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ padding: '6px 14px', borderRadius: '8px', border: 'none' }}
+                onClick={() => {
+                  setActiveTab('dashboard');
+                  setSelectedFilters([]);
+                }}
+              >
+                <LayoutDashboard size={14} />
+                <span style={{ fontSize: '12.5px' }}>Báo cáo Thống kê</span>
+              </button>
+              <button 
+                className={`btn ${activeTab === 'team' ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ padding: '6px 14px', borderRadius: '8px', border: 'none' }}
+                onClick={() => {
+                  setActiveTab('team');
+                  setSelectedFilters([]);
+                }}
+              >
+                <Users size={14} />
+                <span style={{ fontSize: '12.5px' }}>Đội nhóm</span>
+              </button>
+            </>
           )}
         </div>
 
@@ -1631,7 +1651,25 @@ export default function App() {
 
         {/* Board / Dashboard Content Area */}
         <div className="content-area">
-          {activeTab === 'board' || activeTab === 'partners' ? (
+          {role === 'admin' ? (
+            activeTab === 'users' ? (
+              <UsersManager
+                token={token}
+                API_BASE_URL={API_BASE_URL}
+                currentUsername={username}
+                planFeatures={planFeatures}
+                setPlanFeatures={setPlanFeatures}
+                adminSubTab={adminSubTab}
+                setAdminSubTab={setAdminSubTab}
+              />
+            ) : (
+              <div style={{ padding: '40px', color: 'var(--text-muted)', textAlign: 'center', margin: 'auto' }}>
+                <Lock size={48} style={{ color: 'var(--danger)', marginBottom: '16px' }} />
+                <h3 style={{ color: 'var(--text-primary)' }}>Không có quyền truy cập dữ liệu</h3>
+                <p>Vai trò Admin chỉ được phép quản trị hệ thống, người dùng và đội nhóm.</p>
+              </div>
+            )
+          ) : activeTab === 'board' || activeTab === 'partners' ? (
             <>
               {/* Search and Filters */}
               <div className="toolbar">
@@ -1767,16 +1805,6 @@ export default function App() {
               setShifts={setShifts}
               weeklyShifts={weeklyShifts}
               setWeeklyShifts={setWeeklyShifts}
-            />
-          ) : activeTab === 'users' && role === 'admin' ? (
-            <UsersManager
-              token={token}
-              API_BASE_URL={API_BASE_URL}
-              currentUsername={username}
-              planFeatures={planFeatures}
-              setPlanFeatures={setPlanFeatures}
-              adminSubTab={adminSubTab}
-              setAdminSubTab={setAdminSubTab}
             />
           ) : activeTab === 'team' ? (
             <TeamManager

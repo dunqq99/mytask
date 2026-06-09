@@ -377,9 +377,10 @@ export default function UsersManager({
                 <table className="dashboard-table">
                   <thead>
                     <tr>
-                      <th style={{ width: '30%' }}>Tài khoản</th>
-                      <th style={{ width: '35%' }}>Vai trò Hệ thống</th>
-                      <th style={{ width: '35%' }}>Gói Tài khoản (Plan)</th>
+                      <th style={{ width: '25%' }}>Tài khoản</th>
+                      <th style={{ width: '25%' }}>Vai trò Hệ thống</th>
+                      <th style={{ width: '25%' }}>Gói Tài khoản (Plan)</th>
+                      <th style={{ width: '25%' }}>Hạn sử dụng Gói</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -460,6 +461,44 @@ export default function UsersManager({
                                   <option key={p.key} value={p.key} style={{ background: '#18181b', color: '#fff' }}>{p.label}</option>
                                 ))}
                               </select>
+                            </div>
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <input
+                                type="date"
+                                value={user.planExpiresAt ? user.planExpiresAt.split('T')[0] : ''}
+                                onChange={(e) => handleUpdateUser(user.id, { planExpiresAt: e.target.value || null }, user.username)}
+                                disabled={isSelfMassie || updatingUserId === user.id}
+                                style={{
+                                  padding: '4px 8px',
+                                  fontSize: '12px',
+                                  borderRadius: '6px',
+                                  background: 'rgba(255,255,255,0.05)',
+                                  border: '1px solid var(--border-glass)',
+                                  color: 'var(--text-primary)',
+                                  outline: 'none',
+                                  cursor: isSelfMassie ? 'not-allowed' : 'pointer'
+                                }}
+                              />
+                              {user.planExpiresAt && (
+                                <button
+                                  onClick={() => handleUpdateUser(user.id, { planExpiresAt: null }, user.username)}
+                                  disabled={isSelfMassie || updatingUserId === user.id}
+                                  title="Xóa hạn sử dụng (Vô thời hạn)"
+                                  style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: 'var(--danger)',
+                                    cursor: 'pointer',
+                                    padding: '2px',
+                                    fontSize: '11px',
+                                    fontWeight: 'bold'
+                                  }}
+                                >
+                                  ✕
+                                </button>
+                              )}
                               {updatingUserId === user.id && (
                                 <RefreshCw size={12} className="spin" style={{ color: 'var(--text-muted)' }} />
                               )}
@@ -673,9 +712,384 @@ export default function UsersManager({
               </div>
             )}
 
+            {/* SUBTAB 5: QUẢN LÝ ĐỘI NHÓM */}
+            {adminSubTab === 'teams' && (
+              <AdminTeamsManager 
+                token={token}
+                API_BASE_URL={API_BASE_URL}
+                users={users}
+              />
+            )}
+
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function AdminTeamsManager({ token, API_BASE_URL, users }) {
+  const [teams, setTeams] = useState([]);
+  const [loadingTeams, setLoadingTeams] = useState(true);
+  const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  
+  // Form states
+  const [ownerId, setOwnerId] = useState('');
+  const [formMembers, setFormMembers] = useState([]); // Array of { memberId, teamRole }
+  const [selectedMemberId, setSelectedMemberId] = useState('');
+  const [selectedTeamRole, setSelectedTeamRole] = useState('StaffVH');
+  
+  const [isEditing, setIsEditing] = useState(false);
+
+  const fetchTeams = async () => {
+    setLoadingTeams(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/teams`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Không thể tải danh sách đội nhóm.');
+      const data = await res.json();
+      setTeams(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoadingTeams(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTeams();
+  }, [token]);
+
+  const handleOpenCreateForm = () => {
+    setOwnerId('');
+    setFormMembers([]);
+    setSelectedMemberId('');
+    setSelectedTeamRole('StaffVH');
+    setIsEditing(false);
+    setShowForm(true);
+    setError('');
+    setSuccessMsg('');
+  };
+
+  const handleOpenEditForm = (team) => {
+    setOwnerId(team.ownerId);
+    setFormMembers(team.members.map(m => ({ memberId: m.memberId, teamRole: m.teamRole })));
+    setSelectedMemberId('');
+    setSelectedTeamRole('StaffVH');
+    setIsEditing(true);
+    setShowForm(true);
+    setError('');
+    setSuccessMsg('');
+  };
+
+  const handleAddMemberToForm = () => {
+    if (!selectedMemberId) return;
+    if (selectedMemberId === ownerId) {
+      setError('Trưởng nhóm không thể làm thành viên của chính mình.');
+      return;
+    }
+    if (formMembers.some(m => m.memberId === selectedMemberId)) {
+      setError('Thành viên này đã có trong danh sách.');
+      return;
+    }
+    setFormMembers([...formMembers, { memberId: selectedMemberId, teamRole: selectedTeamRole }]);
+    setSelectedMemberId('');
+    setError('');
+  };
+
+  const handleRemoveMemberFromForm = (id) => {
+    setFormMembers(formMembers.filter(m => m.memberId !== id));
+  };
+
+  const handleSaveTeam = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccessMsg('');
+    if (!ownerId) {
+      setError('Vui lòng chọn Trưởng nhóm.');
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/teams/save`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ ownerId, members: formMembers })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Lưu đội nhóm thất bại.');
+      
+      setSuccessMsg('Đã lưu cấu hình đội nhóm thành công!');
+      setShowForm(false);
+      fetchTeams();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleDeleteTeam = async (targetOwnerId, ownerUsername) => {
+    if (!window.confirm(`Bạn có chắc chắn muốn giải tán đội nhóm của "${ownerUsername}"?`)) return;
+    setError('');
+    setSuccessMsg('');
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/teams/${targetOwnerId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Giải tán đội nhóm thất bại.');
+      
+      setSuccessMsg(`Đã giải tán đội nhóm của "${ownerUsername}" thành công!`);
+      fetchTeams();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const getUserUsername = (id) => {
+    const u = users.find(user => user.id === id);
+    return u ? u.username : id;
+  };
+
+  // Lọc danh sách user có thể làm trưởng nhóm (không phải admin)
+  const potentialManagers = users.filter(u => u.role !== 'admin');
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-glass)', paddingBottom: '12px' }}>
+        <div>
+          <h3 style={{ fontSize: '15px', color: 'var(--text-primary)', margin: 0, fontWeight: '600' }}>Danh sách Đội nhóm (Teams)</h3>
+          <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>Xem, tạo mới hoặc chỉnh sửa phân bổ nhân sự và vai trò các đội nhóm trong hệ thống.</p>
+        </div>
+        {!showForm && (
+          <button 
+            className="btn btn-primary"
+            onClick={handleOpenCreateForm}
+            style={{ padding: '8px 16px', borderRadius: '8px', fontSize: '13px' }}
+          >
+            Tạo đội nhóm mới
+          </button>
+        )}
+      </div>
+
+      {error && (
+        <div style={{ padding: '10px 14px', borderRadius: '6px', background: 'var(--danger-light)', color: 'var(--danger)', fontSize: '12.5px' }}>
+          {error}
+        </div>
+      )}
+
+      {successMsg && (
+        <div style={{ padding: '10px 14px', borderRadius: '6px', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', fontSize: '12.5px' }}>
+          {successMsg}
+        </div>
+      )}
+
+      {showForm ? (
+        <form onSubmit={handleSaveTeam} style={{ background: 'rgba(255,255,255,0.01)', padding: '20px', borderRadius: '8px', border: '1px solid var(--border-glass)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <h4 style={{ margin: 0, fontSize: '14px', color: 'var(--primary)' }}>
+            {isEditing ? 'Chỉnh sửa Đội nhóm' : 'Tạo Đội nhóm Mới'}
+          </h4>
+
+          {/* Chọn Manager */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Trưởng nhóm (Manager - MNG):</label>
+            <select
+              value={ownerId}
+              onChange={(e) => setOwnerId(e.target.value)}
+              disabled={isEditing}
+              style={{
+                padding: '8px 12px',
+                fontSize: '13px',
+                borderRadius: '6px',
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid var(--border-glass)',
+                color: 'var(--text-primary)',
+                outline: 'none',
+                maxWidth: '300px'
+              }}
+              required
+            >
+              <option value="" style={{ background: '#18181b' }}>-- Chọn Trưởng nhóm --</option>
+              {potentialManagers.map(u => (
+                <option key={u.id} value={u.id} style={{ background: '#18181b' }}>{u.username} ({u.plan.toUpperCase()})</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Danh sách thành viên hiện tại của form */}
+          <div style={{ marginTop: '10px' }}>
+            <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>
+              Thành viên trong nhóm ({formMembers.length}):
+            </label>
+            {formMembers.length === 0 ? (
+              <div style={{ padding: '12px', borderRadius: '6px', background: 'rgba(255,255,255,0.02)', border: '1px dashed var(--border-glass)', fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center' }}>
+                Chưa có thành viên nào. Vui lòng thêm bên dưới.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {formMembers.map(m => (
+                  <div key={m.memberId} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', border: '1px solid var(--border-glass)', fontSize: '12px' }}>
+                    <span style={{ fontWeight: '500', color: 'var(--text-primary)' }}>{getUserUsername(m.memberId)}</span>
+                    <span style={{ fontSize: '10px', padding: '1px 4px', borderRadius: '3px', background: m.teamRole === 'StaffMKT' ? 'rgba(168,85,247,0.15)' : 'rgba(59,130,246,0.15)', color: m.teamRole === 'StaffMKT' ? '#a855f7' : '#3b82f6', fontWeight: 'bold' }}>
+                      {m.teamRole}
+                    </span>
+                    <button 
+                      type="button" 
+                      onClick={() => handleRemoveMemberFromForm(m.memberId)}
+                      style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', marginLeft: '4px', fontSize: '10px' }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Thêm thành viên vào form */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'end', gap: '12px', padding: '14px', borderRadius: '6px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-glass)', marginTop: '8px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Chọn thành viên:</label>
+              <select
+                value={selectedMemberId}
+                onChange={(e) => setSelectedMemberId(e.target.value)}
+                style={{
+                  padding: '6px 10px',
+                  fontSize: '12.5px',
+                  borderRadius: '6px',
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid var(--border-glass)',
+                  color: 'var(--text-primary)',
+                  outline: 'none',
+                  minWidth: '160px'
+                }}
+              >
+                <option value="" style={{ background: '#18181b' }}>-- Chọn User --</option>
+                {users.filter(u => u.id !== ownerId && u.role !== 'admin').map(u => (
+                  <option key={u.id} value={u.id} style={{ background: '#18181b' }}>{u.username}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Vai trò đội nhóm (RolesTeam):</label>
+              <select
+                value={selectedTeamRole}
+                onChange={(e) => setSelectedTeamRole(e.target.value)}
+                style={{
+                  padding: '6px 10px',
+                  fontSize: '12.5px',
+                  borderRadius: '6px',
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid var(--border-glass)',
+                  color: 'var(--text-primary)',
+                  outline: 'none',
+                  minWidth: '120px'
+                }}
+              >
+                <option value="StaffVH" style={{ background: '#18181b' }}>StaffVH (Vận hành)</option>
+                <option value="StaffMKT" style={{ background: '#18181b' }}>StaffMKT (Marketing)</option>
+              </select>
+            </div>
+
+            <button 
+              type="button" 
+              className="btn btn-secondary"
+              onClick={handleAddMemberToForm}
+              style={{ padding: '6px 12px', fontSize: '12.5px', borderRadius: '6px' }}
+            >
+              Thêm vào nhóm
+            </button>
+          </div>
+
+          {/* Form Actions */}
+          <div style={{ display: 'flex', gap: '10px', marginTop: '10px', justifyContent: 'flex-end' }}>
+            <button 
+              type="button" 
+              className="btn btn-secondary"
+              onClick={() => { setShowForm(false); setError(''); }}
+              style={{ padding: '8px 16px', borderRadius: '8px', fontSize: '13px' }}
+            >
+              Hủy bộ
+            </button>
+            <button 
+              type="submit" 
+              className="btn btn-primary"
+              style={{ padding: '8px 16px', borderRadius: '8px', fontSize: '13px' }}
+            >
+              Lưu cấu hình nhóm
+            </button>
+          </div>
+        </form>
+      ) : (
+        /* Render list of teams */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {loadingTeams ? (
+            <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)' }}>
+              Đang tải danh sách đội nhóm...
+            </div>
+          ) : teams.length === 0 ? (
+            <div style={{ padding: '40px', borderRadius: '8px', border: '1px dashed var(--border-glass)', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
+              Chưa có đội nhóm nào được cấu hình thủ công trong hệ thống. Hãy tạo nhóm mới!
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
+              {teams.map(team => (
+                <div key={team.ownerId} style={{ padding: '16px', borderRadius: '8px', border: '1px solid var(--border-glass)', background: 'rgba(255,255,255,0.01)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '12px' }}>
+                  <div>
+                    {/* Header: Manager Username */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-glass)', paddingBottom: '8px', marginBottom: '8px' }}>
+                      <span style={{ fontWeight: 'bold', color: 'var(--primary)', fontSize: '13.5px' }}>
+                        Nhóm của: {team.ownerUsername}
+                      </span>
+                      <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(245,158,11,0.15)', color: '#f59e0b', fontWeight: 'bold' }}>
+                        MANAGER (MNG)
+                      </span>
+                    </div>
+
+                    {/* Members List */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {team.members.map(m => (
+                        <div key={m.memberId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12.5px' }}>
+                          <span style={{ color: 'var(--text-primary)' }}>{m.memberUsername}</span>
+                          <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '4px', background: m.teamRole === 'StaffMKT' ? 'rgba(168,85,247,0.1)' : 'rgba(59,130,246,0.1)', color: m.teamRole === 'StaffMKT' ? '#a855f7' : '#3b82f6', fontWeight: '500' }}>
+                            {m.teamRole}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Team Actions */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid var(--border-glass)', paddingTop: '8px', marginTop: '4px' }}>
+                    <button 
+                      className="btn btn-secondary"
+                      onClick={() => handleOpenEditForm(team)}
+                      style={{ padding: '4px 10px', fontSize: '12px', borderRadius: '6px' }}
+                    >
+                      Sửa nhóm
+                    </button>
+                    <button 
+                      className="btn btn-secondary"
+                      onClick={() => handleDeleteTeam(team.ownerId, team.ownerUsername)}
+                      style={{ padding: '4px 10px', fontSize: '12px', borderRadius: '6px', color: 'var(--danger)', borderColor: 'rgba(239,68,68,0.2)' }}
+                    >
+                      Giải tán
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

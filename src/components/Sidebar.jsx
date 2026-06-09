@@ -563,6 +563,17 @@ export default function Sidebar({
                 <span className="sidebar-item-text">Giám sát dữ liệu</span>
               </div>
             </div>
+
+            <div 
+              className={`sidebar-item ${adminSubTab === 'teams' ? 'active' : ''}`}
+              onClick={() => setAdminSubTab('teams')}
+              style={{ cursor: 'pointer' }}
+            >
+              <div className="sidebar-item-content">
+                <Users size={16} />
+                <span className="sidebar-item-text">Đội nhóm (Teams)</span>
+              </div>
+            </div>
           </div>
         ) : (
           /* Render Normal Category Management Tree */
