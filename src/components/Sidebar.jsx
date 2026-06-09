@@ -300,16 +300,42 @@ export default function Sidebar({
             </div>
 
             {plan !== 'free' && (
-              <div 
-                className={`sidebar-item ${teamSubTab === 'roles' ? 'active' : ''}`}
-                onClick={() => setTeamSubTab('roles')}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="sidebar-item-content">
-                  <Briefcase size={16} />
-                  <span className="sidebar-item-text">Vai trò đội nhóm</span>
+              <>
+                <div 
+                  className={`sidebar-item ${teamSubTab === 'roles' ? 'active' : ''}`}
+                  onClick={() => setTeamSubTab('roles')}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="sidebar-item-content">
+                    <Briefcase size={16} />
+                    <span className="sidebar-item-text">Vai trò đội nhóm</span>
+                  </div>
                 </div>
-              </div>
+
+                <div 
+                  className={`sidebar-item ${teamSubTab === 'shifts' ? 'active' : ''}`}
+                  onClick={() => setTeamSubTab('shifts')}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="sidebar-item-content">
+                    <CalendarDays size={16} />
+                    <span className="sidebar-item-text">Phân ca & Lịch làm việc</span>
+                  </div>
+                </div>
+
+                {isManager && (
+                  <div 
+                    className={`sidebar-item ${teamSubTab === 'bot-notifications' ? 'active' : ''}`}
+                    onClick={() => setTeamSubTab('bot-notifications')}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <div className="sidebar-item-content">
+                      <Database size={16} />
+                      <span className="sidebar-item-text">Cấu hình Bot thông báo</span>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         ) : isDashboard ? (
@@ -327,29 +353,16 @@ export default function Sidebar({
             </div>
 
             {isManager && (
-              <>
-                <div 
-                  className={`sidebar-item ${dashboardSubTab === 'team-performance' ? 'active' : ''}`}
-                  onClick={() => setDashboardSubTab('team-performance')}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <div className="sidebar-item-content">
-                    <Activity size={16} />
-                    <span className="sidebar-item-text">Hiệu suất Đội nhóm</span>
-                  </div>
+              <div 
+                className={`sidebar-item ${dashboardSubTab === 'team-performance' ? 'active' : ''}`}
+                onClick={() => setDashboardSubTab('team-performance')}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="sidebar-item-content">
+                  <Activity size={16} />
+                  <span className="sidebar-item-text">Hiệu suất Đội nhóm</span>
                 </div>
-
-                <div 
-                  className={`sidebar-item ${dashboardSubTab === 'bot-notifications' ? 'active' : ''}`}
-                  onClick={() => setDashboardSubTab('bot-notifications')}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <div className="sidebar-item-content">
-                    <Database size={16} />
-                    <span className="sidebar-item-text">Cấu hình Bot thông báo</span>
-                  </div>
-                </div>
-              </>
+              </div>
             )}
 
             <div 

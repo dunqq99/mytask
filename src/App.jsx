@@ -1952,6 +1952,16 @@ export default function App() {
               currentUserId={userId}
               onTeamChange={loadBoardFromDatabase}
               teamSubTab={teamSubTab}
+              shifts={shifts}
+              setShifts={setShifts}
+              weeklyShifts={weeklyShifts}
+              setWeeklyShifts={setWeeklyShifts}
+              weeklyMemberShifts={weeklyMemberShifts}
+              setWeeklyMemberShifts={setWeeklyMemberShifts}
+              isManager={isManager}
+              workspaceMembers={workspaceMembers}
+              workdayDuration={workdayDuration}
+              setWorkdayDuration={setWorkdayDuration}
             />
           ) : (
             /* Dashboard Render (passing full states to build complete stats) */
