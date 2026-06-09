@@ -60,7 +60,9 @@ export default function Sidebar({
   role = 'editor',
   plan = 'free',
   onUpgradeClick,
-  onLogout
+  onLogout,
+  teamSubTab = 'overview',
+  setTeamSubTab
 }) {
   const [isAddingRoot, setIsAddingRoot] = useState(false);
   const [rootTitle, setRootTitle] = useState('');
@@ -267,7 +269,9 @@ export default function Sidebar({
       {/* Sidebar Header */}
       <div className="sidebar-header">
         <span className="sidebar-title">
-          {isDashboard 
+          {activeTab === 'team'
+            ? "Quản lý đội nhóm"
+            : isDashboard 
             ? "Báo cáo thống kê" 
             : isPlanner 
             ? "Lập kế hoạch" 
@@ -280,7 +284,34 @@ export default function Sidebar({
       </div>
 
       <div className="sidebar-content" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-        {isDashboard ? (
+        {activeTab === 'team' ? (
+          /* Render Team Navigation Options */
+          <div className="sidebar-section-list">
+            <div 
+              className={`sidebar-item ${teamSubTab === 'overview' ? 'active' : ''}`}
+              onClick={() => setTeamSubTab('overview')}
+              style={{ cursor: 'pointer' }}
+            >
+              <div className="sidebar-item-content">
+                <Users size={16} />
+                <span className="sidebar-item-text">Tổng quan Đội nhóm</span>
+              </div>
+            </div>
+
+            {plan !== 'free' && (
+              <div 
+                className={`sidebar-item ${teamSubTab === 'roles' ? 'active' : ''}`}
+                onClick={() => setTeamSubTab('roles')}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="sidebar-item-content">
+                  <Briefcase size={16} />
+                  <span className="sidebar-item-text">Vai trò đội nhóm</span>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : isDashboard ? (
           /* Render Dashboard Navigation Options */
           <div className="sidebar-section-list">
             <div 

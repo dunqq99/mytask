@@ -16,7 +16,8 @@ export default function TeamManager({
   API_BASE_URL,
   currentUsername,
   currentUserId,
-  onTeamChange
+  onTeamChange,
+  teamSubTab = 'overview'
 }) {
   const [inviteUsername, setInviteUsername] = useState('');
   const [myMembers, setMyMembers] = useState([]);
@@ -386,135 +387,267 @@ export default function TeamManager({
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: userPlan === 'free' ? '1fr' : 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
-        
-        {/* Left column: Invite teammates & My team */}
-        {userPlan !== 'free' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            
-            {/* Invite form */}
-            <div className="glass-panel" style={{ padding: '20px', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
-              <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <UserPlus size={16} style={{ color: 'var(--primary)' }} />
-                <span>Mời thành viên mới</span>
-              </h3>
-              
-              <form onSubmit={handleInvite} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                    Tên đăng nhập (Username) trên hệ thống:
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Nhập chính xác Username..."
-                    className="search-input"
-                    style={{ width: '100%', padding: '8px 12px' }}
-                    value={inviteUsername}
-                    onChange={(e) => setInviteUsername(e.target.value)}
-                    required
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={inviteLoading || !inviteUsername.trim()}
-                  style={{ alignSelf: 'flex-start', padding: '8px 16px' }}
-                >
-                  {inviteLoading ? 'Đang gửi mời...' : 'Mời vào nhóm'}
-                </button>
-              </form>
-            </div>
+      {teamSubTab === 'roles' && userPlan !== 'free' ? (
+        /* Render Roles Management only */
+        <div className="glass-panel" style={{ padding: '20px', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Briefcase size={16} style={{ color: 'var(--primary)' }} />
+              <span>Vai trò Đội nhóm của tôi ({teamRoles.length})</span>
+            </h3>
+            {!showRoleForm && (
+              <button 
+                className="btn btn-primary"
+                onClick={handleOpenCreateRoleForm}
+                style={{ padding: '4px 10px', borderRadius: '6px', fontSize: '12px' }}
+              >
+                Thêm vai trò
+              </button>
+            )}
+          </div>
 
-            {/* Members list */}
-            <div className="glass-panel" style={{ padding: '20px', borderRadius: '12px', border: '1px solid var(--border-glass)', flexGrow: 1 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Users size={16} style={{ color: 'var(--primary)' }} />
-                  <span>{myTeamName ? `Đội nhóm của tôi: ${myTeamName}` : 'Đội nhóm của tôi'} ({myMembers.length})</span>
-                </h3>
-                <button 
-                  onClick={fetchTeamData} 
-                  disabled={loading}
-                  style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
-                  title="Làm mới"
-                >
-                  <RefreshCw size={14} className={loading ? 'spin' : ''} />
-                </button>
+          {roleError && (
+            <div style={{ padding: '8px 12px', borderRadius: '6px', background: 'rgba(239, 68, 68, 0.1)', color: '#f87171', fontSize: '12px', marginBottom: '12px' }}>
+              {roleError}
+            </div>
+          )}
+
+          {roleSuccess && (
+            <div style={{ padding: '8px 12px', borderRadius: '6px', background: 'rgba(16, 185, 129, 0.1)', color: '#34d399', fontSize: '12px', marginBottom: '12px' }}>
+              {roleSuccess}
+            </div>
+          )}
+
+          {showRoleForm ? (
+            <form onSubmit={handleSaveRole} style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'rgba(255,255,255,0.01)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+              <h4 style={{ margin: 0, fontSize: '12.5px', color: 'var(--primary)', fontWeight: 'bold' }}>
+                {isEditingRole ? 'Chỉnh sửa vai trò' : 'Thêm vai trò mới'}
+              </h4>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Mã vai trò (role_key):</label>
+                <input
+                  type="text"
+                  value={roleKey}
+                  onChange={(e) => setRoleKey(e.target.value)}
+                  disabled={isEditingRole}
+                  placeholder="ví dụ: StaffDesign, StaffQA..."
+                  className="search-input"
+                  style={{ padding: '6px 10px', fontSize: '12.5px' }}
+                  required
+                />
               </div>
 
-              {myMembers.length === 0 ? (
-                <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12.5px', fontStyle: 'italic' }}>
-                  Chưa có thành viên nào trong nhóm của bạn. Hãy điền Username bên trên để kết nối và bắt đầu chia sẻ công việc!
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Tên hiển thị:</label>
+                <input
+                  type="text"
+                  value={roleName}
+                  onChange={(e) => setRoleName(e.target.value)}
+                  placeholder="ví dụ: Thiết kế, Kiểm thử..."
+                  className="search-input"
+                  style={{ padding: '6px 10px', fontSize: '12.5px' }}
+                  required
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '6px' }}>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary"
+                  onClick={() => { setShowRoleForm(false); setRoleError(''); }}
+                  style={{ padding: '6px 12px', fontSize: '12px' }}
+                >
+                  Hủy
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn btn-primary"
+                  style={{ padding: '6px 12px', fontSize: '12px' }}
+                >
+                  Lưu vai trò
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {teamRoles.length === 0 ? (
+                <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px', fontStyle: 'italic' }}>
+                  Chưa cấu hình vai trò nào.
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {myMembers.map(m => (
-                    <div key={m.id} style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: '10px 12px',
-                      borderRadius: '8px',
-                      border: '1px solid rgba(255, 255, 255, 0.05)',
-                      background: 'rgba(255, 255, 255, 0.01)'
-                    }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <div style={{ fontSize: '13.5px', fontWeight: '600' }}>
-                          {m.username}
-                          {m.status === 'pending' && (
-                            <span style={{ color: 'var(--text-muted)', fontSize: '11.5px', fontWeight: 'normal', fontStyle: 'italic', marginLeft: '6px' }}>
-                              (Đang chờ xác nhận)
-                            </span>
-                          )}
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                          <span>Vai trò tổ đội:</span>
-                          <select
-                            value={m.role || (teamRoles.length > 0 ? teamRoles[0].roleKey : 'StaffVH')}
-                            onChange={(e) => handleUpdateRole(m.id, e.target.value)}
-                            style={{
-                              padding: '2px 6px',
-                              fontSize: '11.5px',
-                              borderRadius: '4px',
-                              background: 'rgba(255,255,255,0.05)',
-                              border: '1px solid var(--border-glass)',
-                              color: 'var(--text-primary)',
-                              cursor: 'pointer',
-                              outline: 'none'
-                            }}
-                          >
-                            {teamRoles.map(tr => (
-                              <option key={tr.roleKey} value={tr.roleKey} style={{ background: '#18181b', color: '#fff' }}>{tr.roleName}</option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                      <button
+                teamRoles.map(r => (
+                  <div key={r.roleKey} style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '8px 10px',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(255, 255, 255, 0.05)',
+                    background: 'rgba(255, 255, 255, 0.01)'
+                  }}>
+                    <div>
+                      <span style={{ fontSize: '12.5px', fontWeight: '600' }}>{r.roleName}</span>
+                      <span style={{ fontSize: '10px', marginLeft: '6px', padding: '1px 4px', borderRadius: '3px', background: 'rgba(59,130,246,0.15)', color: '#3b82f6' }}>{r.roleKey}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button 
+                        className="btn btn-secondary"
+                        onClick={() => handleOpenEditRoleForm(r)}
+                        style={{ padding: '3px 6px', fontSize: '10.5px', borderRadius: '4px' }}
+                      >
+                        Sửa
+                      </button>
+                      <button 
                         className="btn"
-                        onClick={() => handleRemoveMember(m.id, m.username)}
+                        onClick={() => handleDeleteRole(r.roleKey)}
                         style={{ 
-                          padding: '6px', 
+                          padding: '3px 6px', 
+                          fontSize: '10.5px', 
+                          borderRadius: '4px',
                           color: '#f87171', 
                           background: 'rgba(239, 68, 68, 0.08)',
-                          border: '1px solid rgba(239, 68, 68, 0.15)',
-                          borderRadius: '6px'
+                          border: '1px solid rgba(239, 68, 68, 0.15)'
                         }}
-                        title="Xóa khỏi nhóm"
                       >
-                        <UserMinus size={14} />
+                        Xóa
                       </button>
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))
               )}
             </div>
+          )}
+        </div>
+      ) : (
+        /* Render Overview */
+        <div style={{ display: 'grid', gridTemplateColumns: userPlan === 'free' ? '1fr' : 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
+          
+          {/* Left column: Invite teammates & My team */}
+          {userPlan !== 'free' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              
+              {/* Invite form */}
+              <div className="glass-panel" style={{ padding: '20px', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <UserPlus size={16} style={{ color: 'var(--primary)' }} />
+                  <span>Mời thành viên mới</span>
+                </h3>
+                
+                <form onSubmit={handleInvite} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                      Tên đăng nhập (Username) trên hệ thống:
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Nhập chính xác Username..."
+                      className="search-input"
+                      style={{ width: '100%', padding: '8px 12px' }}
+                      value={inviteUsername}
+                      onChange={(e) => setInviteUsername(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={inviteLoading || !inviteUsername.trim()}
+                    style={{ alignSelf: 'flex-start', padding: '8px 16px' }}
+                  >
+                    {inviteLoading ? 'Đang gửi mời...' : 'Mời vào nhóm'}
+                  </button>
+                </form>
+              </div>
 
-          </div>
-        )}
+              {/* Members list */}
+              <div className="glass-panel" style={{ padding: '20px', borderRadius: '12px', border: '1px solid var(--border-glass)', flexGrow: 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Users size={16} style={{ color: 'var(--primary)' }} />
+                    <span>{myTeamName ? `Đội nhóm của tôi: ${myTeamName}` : 'Đội nhóm của tôi'} ({myMembers.length})</span>
+                  </h3>
+                  <button 
+                    onClick={fetchTeamData} 
+                    disabled={loading}
+                    style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                    title="Làm mới"
+                  >
+                    <RefreshCw size={14} className={loading ? 'spin' : ''} />
+                  </button>
+                </div>
 
-        {/* Right column: Joined teams & Roles management */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          {/* Joined teams */}
+                {myMembers.length === 0 ? (
+                  <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12.5px', fontStyle: 'italic' }}>
+                    Chưa có thành viên nào trong nhóm của bạn. Hãy điền Username bên trên để kết nối và bắt đầu chia sẻ công việc!
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {myMembers.map(m => (
+                      <div key={m.id} style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(255, 255, 255, 0.05)',
+                        background: 'rgba(255, 255, 255, 0.01)'
+                      }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <div style={{ fontSize: '13.5px', fontWeight: '600' }}>
+                            {m.username}
+                            {m.status === 'pending' && (
+                              <span style={{ color: 'var(--text-muted)', fontSize: '11.5px', fontWeight: 'normal', fontStyle: 'italic', marginLeft: '6px' }}>
+                                (Đang chờ xác nhận)
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                            <span>Vai trò tổ đội:</span>
+                            <select
+                              value={m.role || (teamRoles.length > 0 ? teamRoles[0].roleKey : 'StaffVH')}
+                              onChange={(e) => handleUpdateRole(m.id, e.target.value)}
+                              style={{
+                                padding: '2px 6px',
+                                fontSize: '11.5px',
+                                borderRadius: '4px',
+                                background: 'rgba(255,255,255,0.05)',
+                                border: '1px solid var(--border-glass)',
+                                color: 'var(--text-primary)',
+                                cursor: 'pointer',
+                                outline: 'none'
+                              }}
+                            >
+                              {teamRoles.map(tr => (
+                                <option key={tr.roleKey} value={tr.roleKey} style={{ background: '#18181b', color: '#fff' }}>{tr.roleName}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <button
+                          className="btn"
+                          onClick={() => handleRemoveMember(m.id, m.username)}
+                          style={{ 
+                            padding: '6px', 
+                            color: '#f87171', 
+                            background: 'rgba(239, 68, 68, 0.08)',
+                            border: '1px solid rgba(239, 68, 68, 0.15)',
+                            borderRadius: '6px'
+                          }}
+                          title="Xóa khỏi nhóm"
+                        >
+                          <UserMinus size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+            </div>
+          )}
+
+          {/* Right column: Joined teams */}
           <div className="glass-panel" style={{ padding: '20px', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
             <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <ArrowLeftRight size={16} style={{ color: 'var(--primary)' }} />
@@ -553,142 +686,8 @@ export default function TeamManager({
             )}
           </div>
 
-          {/* Quản lý vai trò đội nhóm */}
-          {userPlan !== 'free' && (
-            <div className="glass-panel" style={{ padding: '20px', borderRadius: '12px', border: '1px solid var(--border-glass)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Briefcase size={16} style={{ color: 'var(--primary)' }} />
-                  <span>Vai trò Đội nhóm của tôi ({teamRoles.length})</span>
-                </h3>
-                {!showRoleForm && (
-                  <button 
-                    className="btn btn-primary"
-                    onClick={handleOpenCreateRoleForm}
-                    style={{ padding: '4px 10px', borderRadius: '6px', fontSize: '12px' }}
-                  >
-                    Thêm vai trò
-                  </button>
-                )}
-              </div>
-
-              {roleError && (
-                <div style={{ padding: '8px 12px', borderRadius: '6px', background: 'rgba(239, 68, 68, 0.1)', color: '#f87171', fontSize: '12px', marginBottom: '12px' }}>
-                  {roleError}
-                </div>
-              )}
-
-              {roleSuccess && (
-                <div style={{ padding: '8px 12px', borderRadius: '6px', background: 'rgba(16, 185, 129, 0.1)', color: '#34d399', fontSize: '12px', marginBottom: '12px' }}>
-                  {roleSuccess}
-                </div>
-              )}
-
-              {showRoleForm ? (
-                <form onSubmit={handleSaveRole} style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'rgba(255,255,255,0.01)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
-                  <h4 style={{ margin: 0, fontSize: '12.5px', color: 'var(--primary)', fontWeight: 'bold' }}>
-                    {isEditingRole ? 'Chỉnh sửa vai trò' : 'Thêm vai trò mới'}
-                  </h4>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Mã vai trò (role_key):</label>
-                    <input
-                      type="text"
-                      value={roleKey}
-                      onChange={(e) => setRoleKey(e.target.value)}
-                      disabled={isEditingRole}
-                      placeholder="ví dụ: StaffDesign, StaffQA..."
-                      className="search-input"
-                      style={{ padding: '6px 10px', fontSize: '12.5px' }}
-                      required
-                    />
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Tên hiển thị:</label>
-                    <input
-                      type="text"
-                      value={roleName}
-                      onChange={(e) => setRoleName(e.target.value)}
-                      placeholder="ví dụ: Thiết kế, Kiểm thử..."
-                      className="search-input"
-                      style={{ padding: '6px 10px', fontSize: '12.5px' }}
-                      required
-                    />
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '6px' }}>
-                    <button 
-                      type="button" 
-                      className="btn btn-secondary"
-                      onClick={() => { setShowRoleForm(false); setRoleError(''); }}
-                      style={{ padding: '6px 12px', fontSize: '12px' }}
-                    >
-                      Hủy
-                    </button>
-                    <button 
-                      type="submit" 
-                      className="btn btn-primary"
-                      style={{ padding: '6px 12px', fontSize: '12px' }}
-                    >
-                      Lưu vai trò
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {teamRoles.length === 0 ? (
-                    <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px', fontStyle: 'italic' }}>
-                      Chưa cấu hình vai trò nào.
-                    </div>
-                  ) : (
-                    teamRoles.map(r => (
-                      <div key={r.roleKey} style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid rgba(255, 255, 255, 0.05)',
-                        background: 'rgba(255, 255, 255, 0.01)'
-                      }}>
-                        <div>
-                          <span style={{ fontSize: '12.5px', fontWeight: '600' }}>{r.roleName}</span>
-                          <span style={{ fontSize: '10px', marginLeft: '6px', padding: '1px 4px', borderRadius: '3px', background: 'rgba(59,130,246,0.15)', color: '#3b82f6' }}>{r.roleKey}</span>
-                        </div>
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          <button 
-                            className="btn btn-secondary"
-                            onClick={() => handleOpenEditRoleForm(r)}
-                            style={{ padding: '3px 6px', fontSize: '10.5px', borderRadius: '4px' }}
-                          >
-                            Sửa
-                          </button>
-                          <button 
-                            className="btn"
-                            onClick={() => handleDeleteRole(r.roleKey)}
-                            style={{ 
-                              padding: '3px 6px', 
-                              fontSize: '10.5px', 
-                              borderRadius: '4px',
-                              color: '#f87171', 
-                              background: 'rgba(239, 68, 68, 0.08)',
-                              border: '1px solid rgba(239, 68, 68, 0.15)'
-                            }}
-                          >
-                            Xóa
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-          )}
         </div>
-
-      </div>
+      )}
     </div>
   );
 }

@@ -354,6 +354,14 @@ export default function App() {
   }, [plan, isTeammate, activeTab]);
 
   const [dashboardSubTab, setDashboardSubTab] = useState('tasks'); // 'tasks' or 'partners'
+  const [teamSubTab, setTeamSubTab] = useState('overview'); // 'overview' or 'roles'
+
+  useEffect(() => {
+    if (plan === 'free' && teamSubTab !== 'overview') {
+      setTeamSubTab('overview');
+    }
+  }, [plan, teamSubTab]);
+
   const [adminSubTab, setAdminSubTab] = useState('members'); // 'members', 'roles', 'plans', 'data'
   const [plannerBacklogFilter, setPlannerBacklogFilter] = useState('all'); // 'all', 'urgent', 'no-due', 'short'
   const [plannerScheduleView, setPlannerScheduleView] = useState('day'); // 'day', 'week', 'month'
@@ -1672,6 +1680,8 @@ export default function App() {
           plan={plan}
           onUpgradeClick={() => setShowUpgradeModal(true)}
           onLogout={handleLogout}
+          teamSubTab={teamSubTab}
+          setTeamSubTab={setTeamSubTab}
         />
 
         {/* Board / Dashboard Content Area */}
@@ -1838,6 +1848,7 @@ export default function App() {
               currentUsername={username}
               currentUserId={userId}
               onTeamChange={loadBoardFromDatabase}
+              teamSubTab={teamSubTab}
             />
           ) : (
             /* Dashboard Render (passing full states to build complete stats) */
