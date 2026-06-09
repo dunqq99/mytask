@@ -218,6 +218,9 @@ export default function Dashboard({
   const { monday, sunday } = getWeekRange();
   const { firstDay, lastDay } = getMonthRange();
 
+  const todayDateObj = new Date();
+  todayDateObj.setHours(0, 0, 0, 0);
+
   // 3. Filter Task Cards by Period
   // 4. Task Completed IDs list
   const completedTaskIds = useMemo(() => columns.find(col => col.id === 'col-4')?.cardIds || [], [columns]);
@@ -338,8 +341,6 @@ export default function Dashboard({
   const completedTaskCount = filteredTaskCards.filter(c => completedTaskIds.includes(c.id) || c.isArchived || !!c.completedAt).length;
   const activeTaskCount = totalTaskCount - completedTaskCount;
 
-  const todayDateObj = new Date();
-  todayDateObj.setHours(0, 0, 0, 0);
   const overdueTaskCount = filteredTaskCards.filter(c => {
     if (!c.dueDate) return false;
     const isCompleted = completedTaskIds.includes(c.id) || c.isArchived || !!c.completedAt;
