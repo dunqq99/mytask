@@ -443,7 +443,7 @@ export default function TeamManager({
   };
 
   return (
-    <div style={{ padding: '24px 40px', maxWidth: '1200px', margin: '0 auto', color: 'var(--text-primary)', minHeight: '100%', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+    <div style={{ padding: '24px 40px', maxWidth: '1200px', margin: '0 auto', color: 'var(--text-primary)', height: '100%', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
       {error && (
         <div className="alert alert-danger" style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '8px', color: '#f87171', fontSize: '13px' }}>
