@@ -346,6 +346,12 @@ export default function App() {
     }
   }, [token, role, activeTab]);
 
+  useEffect(() => {
+    if (plan === 'free' && activeTab === 'team') {
+      setActiveTab('board');
+    }
+  }, [plan, activeTab]);
+
   const [dashboardSubTab, setDashboardSubTab] = useState('tasks'); // 'tasks' or 'partners'
   const [adminSubTab, setAdminSubTab] = useState('members'); // 'members', 'roles', 'plans', 'data'
   const [plannerBacklogFilter, setPlannerBacklogFilter] = useState('all'); // 'all', 'urgent', 'no-due', 'short'
@@ -1497,17 +1503,19 @@ export default function App() {
                 <LayoutDashboard size={14} />
                 <span style={{ fontSize: '12.5px' }}>Báo cáo Thống kê</span>
               </button>
-              <button 
-                className={`btn ${activeTab === 'team' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '6px 14px', borderRadius: '8px', border: 'none' }}
-                onClick={() => {
-                  setActiveTab('team');
-                  setSelectedFilters([]);
-                }}
-              >
-                <Users size={14} />
-                <span style={{ fontSize: '12.5px' }}>Đội nhóm</span>
-              </button>
+              {plan !== 'free' && (
+                <button 
+                  className={`btn ${activeTab === 'team' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '6px 14px', borderRadius: '8px', border: 'none' }}
+                  onClick={() => {
+                    setActiveTab('team');
+                    setSelectedFilters([]);
+                  }}
+                >
+                  <Users size={14} />
+                  <span style={{ fontSize: '12.5px' }}>Đội nhóm</span>
+                </button>
+              )}
             </>
           )}
         </div>

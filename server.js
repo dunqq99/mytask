@@ -1313,6 +1313,16 @@ app.get('/api/workspace/members', authenticateToken, async (req, res) => {
   try {
     client = await pool.connect();
 
+    // Kiểm tra xem plan của user hiện tại có phải là free không
+    const userPlanRes = await client.query('SELECT plan, username FROM users WHERE id = $1', [userId]);
+    const userPlan = userPlanRes.rowCount > 0 ? userPlanRes.rows[0].plan : 'free';
+    const userUsername = userPlanRes.rowCount > 0 ? userPlanRes.rows[0].username : '';
+
+    if (userPlan === 'free') {
+      client.release();
+      return res.json([{ id: userId, username: userUsername, role: 'editor', roleName: 'Cá nhân' }]);
+    }
+
     // 1. Xác định Manager ID của đội nhóm (nếu đang là thành viên của ai đó thì lấy ID người đó, ngược lại là chính mình)
     let managerId = userId;
     const joinedRes = await client.query('SELECT owner_id FROM team_members WHERE member_id = $1 LIMIT 1', [userId]);
@@ -1388,12 +1398,20 @@ app.get('/api/team', authenticateToken, async (req, res) => {
     const ownTeamRes = await client.query('SELECT team_name FROM teams WHERE owner_id = $1', [userId]);
     const myTeamName = ownTeamRes.rowCount > 0 ? ownTeamRes.rows[0].team_name : '';
 
-    // Thành viên do tôi mời (lấy vai trò đội nhóm tm.team_role)
-    const membersRes = await client.query(`
-      SELECT u.id, u.username, tm.team_role AS "role" FROM users u
-      JOIN team_members tm ON tm.member_id = u.id
-      WHERE tm.owner_id = $1
-    `, [userId]);
+    // Lấy plan của user
+    const userPlanRes = await client.query('SELECT plan FROM users WHERE id = $1', [userId]);
+    const userPlan = userPlanRes.rowCount > 0 ? userPlanRes.rows[0].plan : 'free';
+
+    // Thành viên do tôi mời (lấy vai trò đội nhóm tm.team_role) - nếu là free thì rỗng
+    let myMembers = [];
+    if (userPlan !== 'free') {
+      const membersRes = await client.query(`
+        SELECT u.id, u.username, tm.team_role AS "role" FROM users u
+        JOIN team_members tm ON tm.member_id = u.id
+        WHERE tm.owner_id = $1
+      `, [userId]);
+      myMembers = membersRes.rows;
+    }
     
     // Nhóm tôi đã tham gia (những người đã mời tôi)
     const joinedRes = await client.query(`
@@ -1433,6 +1451,13 @@ app.post('/api/team/invite', authenticateToken, async (req, res) => {
   let client;
   try {
     client = await pool.connect();
+
+    // Kiểm tra xem plan của user hiện tại có phải là free không
+    const userPlanRes = await client.query('SELECT plan FROM users WHERE id = $1', [userId]);
+    if (userPlanRes.rowCount > 0 && userPlanRes.rows[0].plan === 'free') {
+      client.release();
+      return res.status(403).json({ error: 'Tài khoản miễn phí (Free) không thể sử dụng chức năng đội nhóm. Vui lòng nâng cấp gói.' });
+    }
     
     // Tìm ID người dùng được mời
     const targetUserRes = await client.query('SELECT id FROM users WHERE username = $1', [username.trim()]);
@@ -1479,6 +1504,13 @@ app.post('/api/team/update-role', authenticateToken, async (req, res) => {
   let client;
   try {
     client = await pool.connect();
+
+    // Kiểm tra xem plan của user hiện tại có phải là free không
+    const userPlanRes = await client.query('SELECT plan FROM users WHERE id = $1', [userId]);
+    if (userPlanRes.rowCount > 0 && userPlanRes.rows[0].plan === 'free') {
+      client.release();
+      return res.status(403).json({ error: 'Tài khoản miễn phí (Free) không thể sử dụng chức năng đội nhóm. Vui lòng nâng cấp gói.' });
+    }
 
     // Kiểm tra vai trò động có hợp lệ không
     const roleCheck = await client.query('SELECT 1 FROM team_roles WHERE role_key = $1', [role]);
