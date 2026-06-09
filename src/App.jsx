@@ -347,13 +347,14 @@ export default function App() {
   }, [token, role, activeTab]);
 
   useEffect(() => {
-    if (plan === 'free' && activeTab === 'team') {
+    if (plan === 'free' && !isTeammate && activeTab === 'team') {
       setActiveTab('board');
     }
-  }, [plan, activeTab]);
+  }, [plan, isTeammate, activeTab]);
 
   const [dashboardSubTab, setDashboardSubTab] = useState('tasks'); // 'tasks' or 'partners'
   const [adminSubTab, setAdminSubTab] = useState('members'); // 'members', 'roles', 'plans', 'data'
+  const [isTeammate, setIsTeammate] = useState(false);
   const [plannerBacklogFilter, setPlannerBacklogFilter] = useState('all'); // 'all', 'urgent', 'no-due', 'short'
   const [plannerScheduleView, setPlannerScheduleView] = useState('day'); // 'day', 'week', 'month'
   const [autoInsertBreaks, setAutoInsertBreaks] = useState(true);
@@ -577,6 +578,21 @@ export default function App() {
         const data = await response.json();
         if (data.userId) {
           setUserId(data.userId);
+        }
+        if (data.userRole) {
+          setRole(data.userRole);
+          localStorage.setItem('zenboard_role', data.userRole);
+        }
+        if (data.userPlan) {
+          setPlan(data.userPlan);
+          localStorage.setItem('zenboard_plan', data.userPlan);
+        }
+        if (data.isTeammate !== undefined) {
+          setIsTeammate(data.isTeammate);
+        }
+        if (data.planFeatures) {
+          setPlanFeatures(data.planFeatures);
+          localStorage.setItem('zenboard_plan_features', JSON.stringify(data.planFeatures));
         }
         
         if (data.categories && data.columns && data.cards) {
@@ -1503,7 +1519,7 @@ export default function App() {
                 <LayoutDashboard size={14} />
                 <span style={{ fontSize: '12.5px' }}>Báo cáo Thống kê</span>
               </button>
-              {plan !== 'free' && (
+              {(plan !== 'free' || isTeammate) && (
                 <button 
                   className={`btn ${activeTab === 'team' ? 'btn-primary' : 'btn-secondary'}`}
                   style={{ padding: '6px 14px', borderRadius: '8px', border: 'none' }}

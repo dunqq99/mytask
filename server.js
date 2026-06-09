@@ -1144,6 +1144,10 @@ app.get('/api/board', authenticateToken, async (req, res) => {
       data.userPlan = 'free';
     }
 
+    // Kiểm tra xem user có phải là thành viên hoặc trưởng nhóm của một đội nhóm nào không
+    const teamCheckRes = await client.query('SELECT COUNT(*) FROM team_members WHERE owner_id = $1 OR member_id = $1', [userId]);
+    data.isTeammate = parseInt(teamCheckRes.rows[0].count, 10) > 0;
+
     // 6. Tải cấu hình tính năng các gói (Plan Features)
     const featRes = await client.query("SELECT value FROM settings WHERE key = 'plan_features' AND user_id = 'system'");
     if (featRes.rowCount > 0) {
