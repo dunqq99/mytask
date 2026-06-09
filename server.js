@@ -397,6 +397,36 @@ app.get('/api/debug/users', async (req, res) => {
   }
 });
 
+// API Debug kiểm tra cấu trúc dữ liệu tổng quan
+app.get('/api/debug/db-summary', async (req, res) => {
+  if (!pool) return res.status(500).json({ error: 'Database chưa kết nối.' });
+  let client;
+  try {
+    client = await pool.connect();
+    const usersCount = await client.query('SELECT COUNT(*) FROM users');
+    const cardsCount = await client.query('SELECT COUNT(*) FROM cards');
+    const columnsCount = await client.query('SELECT COUNT(*) FROM columns');
+    const categoriesCount = await client.query('SELECT COUNT(*) FROM categories');
+    const settingsCount = await client.query('SELECT COUNT(*) FROM settings');
+    const cardsOwners = await client.query('SELECT user_id, COUNT(*) FROM cards GROUP BY user_id');
+    const teamMembersCount = await client.query('SELECT COUNT(*) FROM team_members');
+
+    client.release();
+    res.json({
+      users: parseInt(usersCount.rows[0].count, 10),
+      cards: parseInt(cardsCount.rows[0].count, 10),
+      columns: parseInt(columnsCount.rows[0].count, 10),
+      categories: parseInt(categoriesCount.rows[0].count, 10),
+      settings: parseInt(settingsCount.rows[0].count, 10),
+      team_members: parseInt(teamMembersCount.rows[0].count, 10),
+      cardsOwners: cardsOwners.rows
+    });
+  } catch (err) {
+    if (client) client.release();
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // API Đăng ký tài khoản mới
 app.post('/api/auth/register', async (req, res) => {
   const { username, password } = req.body;
