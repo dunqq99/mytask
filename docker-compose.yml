@@ -33,6 +33,8 @@ services:
       PGDATABASE: ${POSTGRES_DB}
       PORT: ${BACKEND_PORT}
       TZ: ${TZ}
+    volumes:
+      - ./backups:/app/backups
     # Bỏ phần ports ở host vì Nginx sẽ giao tiếp nội bộ trong mạng Docker của compose, tránh trùng cổng ở host
 
   # Dịch vụ Nginx Web Server (Frontend React + Reverse Proxy)

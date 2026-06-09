@@ -2,6 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import pg from 'pg';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import { exec } from 'child_process';
 
 const { Client, Pool } = pg;
 
@@ -358,6 +361,9 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
 ensureDatabaseAndTables().then(() => {
   app.listen(PORT, () => {
     console.log(`Backend Server đang chạy tại http://localhost:${PORT}`);
+    // Thực hiện sao lưu ngay khi khởi động và lập lịch định kỳ mỗi 24 giờ
+    runDatabaseBackup();
+    setInterval(runDatabaseBackup, 24 * 60 * 60 * 1000);
   });
 }).catch(err => {
   console.error('[Startup Error] Không thể khởi chạy server do lỗi kết nối cơ sở dữ liệu:', err.message);
@@ -851,7 +857,7 @@ app.get('/api/board', authenticateToken, async (req, res) => {
       };
     }
 
-    data.userId = currentUserId; // Trả về ID người dùng đang đăng nhập
+    data.userId = userId; // Trả về ID người dùng đang đăng nhập
 
     client.release();
     res.json(data);
@@ -1204,3 +1210,52 @@ app.post('/api/team/remove', authenticateToken, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// Hàm tự động sao lưu cơ sở dữ liệu hàng ngày (Daily DB Backup)
+function runDatabaseBackup() {
+  const backupDir = path.join(process.cwd(), 'backups');
+  if (!fs.existsSync(backupDir)) {
+    fs.mkdirSync(backupDir, { recursive: true });
+  }
+  const now = new Date();
+  const pad = (num) => String(num).padStart(2, '0');
+  const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+  const backupFile = path.join(backupDir, `backup-${timestamp}.sql`);
+  
+  const host = pgConfig.host || 'db';
+  const port = pgConfig.port || 5432;
+  const user = pgConfig.user || 'postgres';
+  const dbName = pgConfig.database || 'zenboard';
+  const password = pgConfig.password || 'postgres';
+  
+  const cmd = `PGPASSWORD="${password}" pg_dump -h ${host} -p ${port} -U ${user} -d ${dbName} -f "${backupFile}"`;
+  
+  console.log(`[Backup] Đang tiến hành sao lưu Database vào: ${backupFile}...`);
+  exec(cmd, (error, stdout, stderr) => {
+    if (error) {
+      console.error('[Backup Error] Lỗi sao lưu Database:', error.message);
+      return;
+    }
+    console.log(`[Backup] Đã tạo thành công bản sao lưu Database: backup-${timestamp}.sql`);
+    
+    // Tự động dọn dẹp các bản sao lưu cũ hơn 30 ngày
+    try {
+      const files = fs.readdirSync(backupDir);
+      const maxAge = 30 * 24 * 60 * 60 * 1000; // 30 ngày
+      const nowMs = Date.now();
+      
+      files.forEach(file => {
+        if (file.startsWith('backup-') && file.endsWith('.sql')) {
+          const filePath = path.join(backupDir, file);
+          const stats = fs.statSync(filePath);
+          if (nowMs - stats.mtimeMs > maxAge) {
+            fs.unlinkSync(filePath);
+            console.log(`[Backup Prune] Đã xóa bản sao lưu cũ > 30 ngày: ${file}`);
+          }
+        }
+      });
+    } catch (pruneErr) {
+      console.error('[Backup Prune Error] Lỗi dọn dẹp bản sao lưu cũ:', pruneErr.message);
+    }
+  });
+}
