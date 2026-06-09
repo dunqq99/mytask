@@ -433,6 +433,9 @@ export default function UsersManager({
                                 }}
                               >
                                 <option value="editor" style={{ background: '#18181b', color: '#fff' }}>Editor (Phổ thông)</option>
+                                <option value="MNG" style={{ background: '#18181b', color: '#fff' }}>Trưởng nhóm (MNG)</option>
+                                <option value="StaffMKT" style={{ background: '#18181b', color: '#fff' }}>Staff Marketing (MKT)</option>
+                                <option value="StaffVH" style={{ background: '#18181b', color: '#fff' }}>Staff Vận hành (VH)</option>
                                 <option value="admin" style={{ background: '#18181b', color: '#fff' }}>Admin (Quản trị)</option>
                               </select>
                             </div>

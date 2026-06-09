@@ -1105,11 +1105,22 @@ export default function CardModal({
                   }}
                 >
                   <option value="">-- Chưa phân công --</option>
-                  {workspaceMembers.map(member => (
-                    <option key={member.id} value={member.id}>
-                      {member.username} ({member.role || 'thành viên'})
-                    </option>
-                  ))}
+                  {workspaceMembers.map(member => {
+                    const getRoleLabel = (role) => {
+                      switch (role) {
+                        case 'MNG': return 'Trưởng nhóm';
+                        case 'StaffMKT': return 'Nhân viên Marketing';
+                        case 'StaffVH': return 'Nhân viên Vận hành';
+                        case 'admin': return 'Quản trị viên';
+                        default: return 'Thành viên';
+                      }
+                    };
+                    return (
+                      <option key={member.id} value={member.id}>
+                        {member.username} ({getRoleLabel(member.role)})
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
             </div>

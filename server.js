@@ -908,6 +908,10 @@ app.get('/api/workspace/members', authenticateToken, async (req, res) => {
   let client;
   try {
     client = await pool.connect();
+
+    // Lấy role hiện tại của người dùng đăng nhập
+    const userRoleRes = await client.query('SELECT role FROM users WHERE id = $1', [userId]);
+    const userRole = userRoleRes.rows[0]?.role || 'editor';
     
     // Tải thông tin của:
     // 1. Bản thân user
@@ -915,23 +919,34 @@ app.get('/api/workspace/members', authenticateToken, async (req, res) => {
     // 3. Các trưởng nhóm của các nhóm user đã tham gia
     // 4. Các thành viên khác cùng thuộc các nhóm user đã tham gia (fellow members)
     const membersRes = await client.query(`
-      SELECT id, username FROM users WHERE id = $1
+      SELECT id, username, role FROM users WHERE id = $1
       UNION
-      SELECT u.id, u.username FROM users u
+      SELECT u.id, u.username, u.role FROM users u
       JOIN team_members tm ON tm.member_id = u.id
       WHERE tm.owner_id = $1
       UNION
-      SELECT u.id, u.username FROM users u
+      SELECT u.id, u.username, u.role FROM users u
       JOIN team_members tm ON tm.owner_id = u.id
       WHERE tm.member_id = $1
       UNION
-      SELECT u.id, u.username FROM users u
+      SELECT u.id, u.username, u.role FROM users u
       JOIN team_members tm ON tm.member_id = u.id
       WHERE tm.owner_id IN (SELECT owner_id FROM team_members WHERE member_id = $1)
     `, [userId]);
     
+    let finalMembers = membersRes.rows;
+
+    // StaffVH: chỉ được giao việc lại cho nhau (StaffVH) hoặc đẩy sang cho StaffMKT
+    if (userRole === 'StaffVH') {
+      finalMembers = finalMembers.filter(m => 
+        m.id === userId || 
+        m.role === 'StaffVH' || 
+        m.role === 'StaffMKT'
+      );
+    }
+    
     client.release();
-    res.json(membersRes.rows);
+    res.json(finalMembers);
   } catch (err) {
     if (client) client.release();
     res.status(500).json({ error: err.message });
