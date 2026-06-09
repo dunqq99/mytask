@@ -18,7 +18,8 @@ import {
   Cloud,
   CloudOff,
   RefreshCw,
-  X
+  X,
+  Lock
 } from 'lucide-react';
 import Board from './components/Board';
 import Dashboard from './components/Dashboard';
