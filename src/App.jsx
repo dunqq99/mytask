@@ -418,6 +418,7 @@ export default function App() {
     { id: 'shift-3', name: 'Ca 3', startTime: '23:00', endTime: '07:00' }
   ]);
   const [weeklyShifts, setWeeklyShifts] = useState({});
+  const [weeklyMemberShifts, setWeeklyMemberShifts] = useState({});
 
   // Card modal state
   const [selectedCardInfo, setSelectedCardInfo] = useState(null); // { card, columnId }
@@ -733,6 +734,7 @@ export default function App() {
             if (data.settings.lastSyncTime) setLastSyncTime(data.settings.lastSyncTime);
             if (data.settings.shifts) setShifts(data.settings.shifts);
             if (data.settings.weeklyShifts) setWeeklyShifts(data.settings.weeklyShifts);
+            if (data.settings.weeklyMemberShifts) setWeeklyMemberShifts(data.settings.weeklyMemberShifts);
             if (data.settings.tags) {
               setTags(data.settings.tags);
               localStorage.setItem('zenboard_tags', JSON.stringify(data.settings.tags));
@@ -819,6 +821,7 @@ export default function App() {
             lastSyncTime,
             shifts,
             weeklyShifts,
+            weeklyMemberShifts,
             tags,
             partnerTags
           }
@@ -855,7 +858,7 @@ export default function App() {
         clearTimeout(backendSyncTimeoutRef.current);
       }
     };
-  }, [categories, columns, partnerColumns, cards, todaySchedule, workdayDuration, googleSheetUrl, googleSheetDisplayUrl, isAutoSyncEnabled, lastSyncTime, isInitialLoaded, token, shifts, weeklyShifts, tags, partnerTags]);
+  }, [categories, columns, partnerColumns, cards, todaySchedule, workdayDuration, googleSheetUrl, googleSheetDisplayUrl, isAutoSyncEnabled, lastSyncTime, isInitialLoaded, token, shifts, weeklyShifts, weeklyMemberShifts, tags, partnerTags]);
 
   const partnerRootId = (() => {
     const partnerCat = categories.find(c => !c.parentId && c.name.includes('Đối tác'));
@@ -1935,6 +1938,11 @@ export default function App() {
               setShifts={setShifts}
               weeklyShifts={weeklyShifts}
               setWeeklyShifts={setWeeklyShifts}
+              weeklyMemberShifts={weeklyMemberShifts}
+              setWeeklyMemberShifts={setWeeklyMemberShifts}
+              isManager={isManager}
+              currentUserId={userId}
+              workspaceMembers={workspaceMembers}
             />
           ) : activeTab === 'team' ? (
             <TeamManager

@@ -35,7 +35,12 @@ export default function Planner({
   shifts = [],
   setShifts,
   weeklyShifts = {},
-  setWeeklyShifts
+  setWeeklyShifts,
+  weeklyMemberShifts = {},
+  setWeeklyMemberShifts,
+  isManager = false,
+  currentUserId = '',
+  workspaceMembers = []
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -73,8 +78,31 @@ export default function Planner({
     return monday.toLocaleDateString('en-CA');
   }, []);
 
-  const activeShiftId = weeklyShifts[currentWeekMondayStr] || '';
+  const activeShiftId = weeklyMemberShifts[currentUserId]?.[currentWeekMondayStr] || weeklyShifts[currentWeekMondayStr] || '';
   const activeShift = shifts.find(s => s.id === activeShiftId);
+
+  const handleMemberShiftChange = (memberId, shiftId) => {
+    if (!isManager) return;
+    const updatedWeeklyMemberShifts = {
+      ...weeklyMemberShifts,
+      [memberId]: {
+        ...(weeklyMemberShifts[memberId] || {}),
+        [currentWeekMondayStr]: shiftId || ''
+      }
+    };
+    setWeeklyMemberShifts(updatedWeeklyMemberShifts);
+  };
+
+  // Auto-sync workdayDuration with activeShift
+  useEffect(() => {
+    if (activeShift) {
+      const startMins = parseTimeToMinutes(activeShift.startTime);
+      const endMins = parseTimeToMinutes(activeShift.endTime);
+      let dur = endMins - startMins;
+      if (dur < 0) dur += 24 * 60;
+      setWorkdayDuration(dur);
+    }
+  }, [activeShift, setWorkdayDuration]);
 
   const getShiftRemainingBudget = (startTimeStr, endTimeStr, nowMins) => {
     const startMins = parseTimeToMinutes(startTimeStr);
@@ -1054,60 +1082,95 @@ export default function Planner({
                     {/* Shift Selector */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '12px', flexWrap: 'wrap' }}>
                       <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 'bold' }}>Ca làm việc tuần này:</span>
-                      <select
-                        className="planner-select"
-                        value={activeShiftId}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setWeeklyShifts(prev => ({ ...prev, [currentWeekMondayStr]: val }));
-                          const sh = shifts.find(s => s.id === val);
-                          if (sh) {
-                            const startMins = parseTimeToMinutes(sh.startTime);
-                            const endMins = parseTimeToMinutes(sh.endTime);
-                            let dur = endMins - startMins;
-                            if (dur < 0) dur += 24 * 60;
-                            setWorkdayDuration(dur);
-                          }
-                        }}
-                        style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12px', minWidth: '150px' }}
-                      >
-                        <option value="">-- Chưa chọn ca --</option>
-                        {shifts.map(s => (
-                          <option key={s.id} value={s.id}>{s.name} ({s.startTime} - {s.endTime})</option>
-                        ))}
-                      </select>
-                      <button
-                        className="btn btn-secondary"
-                        onClick={() => {
-                          setShowShiftModal(true);
-                          setShiftFormName('');
-                          setShiftFormStart('08:00');
-                          setShiftFormEnd('16:00');
-                        }}
-                        style={{ padding: '6px 10px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                        title="Cấu hình ca làm việc"
-                      >
-                        <Settings size={13} />
-                        <span>Cài đặt ca</span>
-                      </button>
+                      {isManager ? (
+                        <select
+                          className="planner-select"
+                          value={activeShiftId}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            handleMemberShiftChange(currentUserId, val);
+                          }}
+                          style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12px', minWidth: '150px' }}
+                        >
+                          <option value="">-- Chưa chọn ca --</option>
+                          {shifts.map(s => (
+                            <option key={s.id} value={s.id}>{s.name} ({s.startTime} - {s.endTime})</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="badge" style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12.5px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-primary)', fontWeight: '600', border: '1px solid var(--border-glass)' }}>
+                          {activeShift ? `${activeShift.name} (${activeShift.startTime} - ${activeShift.endTime})` : 'Chưa được xếp ca'}
+                        </span>
+                      )}
+                      
+                      {isManager && (
+                        <button
+                          className="btn btn-secondary"
+                          onClick={() => {
+                            setShowShiftModal(true);
+                            setShiftFormName('');
+                            setShiftFormStart('08:00');
+                            setShiftFormEnd('16:00');
+                          }}
+                          style={{ padding: '6px 10px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                          title="Cấu hình ca làm việc"
+                        >
+                          <Settings size={13} />
+                          <span>Cài đặt ca</span>
+                        </button>
+                      )}
                     </div>
 
+                    {/* Team Shift Assignment Panel for Manager */}
+                    {isManager && workspaceMembers && workspaceMembers.length > 0 && (
+                      <div className="glass" style={{ padding: '16px', marginTop: '12px', borderRadius: '8px', border: '1px solid var(--border-glass)', background: 'rgba(255,255,255,0.01)', width: '100%' }}>
+                        <h4 style={{ fontSize: '12.5px', fontWeight: 'bold', margin: '0 0 10px 0', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Users size={14} /> Bố trí ca làm việc cho Đội nhóm ({currentWeekMondayStr})
+                        </h4>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {workspaceMembers.map(member => {
+                            const memberShiftId = weeklyMemberShifts[member.id]?.[currentWeekMondayStr] || '';
+                            return (
+                              <div key={member.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
+                                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                  {member.username} <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>({member.roleName || member.role})</span>
+                                </span>
+                                <select
+                                  className="planner-select"
+                                  value={memberShiftId}
+                                  onChange={(e) => handleMemberShiftChange(member.id, e.target.value)}
+                                  style={{ padding: '4px 8px', fontSize: '11.5px', minWidth: '150px' }}
+                                >
+                                  <option value="">-- Chưa xếp ca --</option>
+                                  {shifts.map(s => (
+                                    <option key={s.id} value={s.id}>{s.name} ({s.startTime} - {s.endTime})</option>
+                                  ))}
+                                </select>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Slider to configure workday hours */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '12px', background: 'rgba(255,255,255,0.03)', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
-                      <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 'bold' }}>Quỹ giờ:</span>
-                      <input
-                        type="range"
-                        min="240" // 4 hours
-                        max="720" // 12 hours
-                        step="30"
-                        value={workdayDuration}
-                        onChange={(e) => setWorkdayDuration(parseInt(e.target.value, 10))}
-                        style={{ flexGrow: 1, accentColor: 'var(--primary)' }}
-                      />
-                      <span style={{ fontSize: '12px', fontWeight: 'bold', minWidth: '50px', textAlign: 'right' }}>
-                        {formatTotalTime(workdayDuration)}
-                      </span>
-                    </div>
+                    {isManager && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '12px', background: 'rgba(255,255,255,0.03)', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-glass)' }}>
+                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 'bold' }}>Quỹ giờ:</span>
+                        <input
+                          type="range"
+                          min="240" // 4 hours
+                          max="720" // 12 hours
+                          step="30"
+                          value={workdayDuration}
+                          onChange={(e) => setWorkdayDuration(parseInt(e.target.value, 10))}
+                          style={{ flexGrow: 1, accentColor: 'var(--primary)' }}
+                        />
+                        <span style={{ fontSize: '12px', fontWeight: 'bold', minWidth: '50px', textAlign: 'right' }}>
+                          {formatTotalTime(workdayDuration)}
+                        </span>
+                      </div>
+                    )}
 
                     {/* Visual Budget & Stress Indicators */}
                     <div className="planner-indicators">
@@ -1324,41 +1387,42 @@ export default function Planner({
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 'bold' }}>Ca làm việc:</span>
-                        <select
-                          className="planner-select"
-                          value={activeShiftId}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setWeeklyShifts(prev => ({ ...prev, [currentWeekMondayStr]: val }));
-                            const sh = shifts.find(s => s.id === val);
-                            if (sh) {
-                              const startMins = parseTimeToMinutes(sh.startTime);
-                              const endMins = parseTimeToMinutes(sh.endTime);
-                              let dur = endMins - startMins;
-                              if (dur < 0) dur += 24 * 60;
-                              setWorkdayDuration(dur);
-                            }
-                          }}
-                          style={{ padding: '4px 8px', fontSize: '12px', minWidth: '130px' }}
-                        >
-                          <option value="">-- Chưa chọn --</option>
-                          {shifts.map(s => (
-                            <option key={s.id} value={s.id}>{s.name}</option>
-                          ))}
-                        </select>
-                        <button
-                          className="btn btn-secondary"
-                          onClick={() => {
-                            setShowShiftModal(true);
-                            setShiftFormName('');
-                            setShiftFormStart('08:00');
-                            setShiftFormEnd('16:00');
-                          }}
-                          style={{ padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                          title="Cấu hình ca làm việc"
-                        >
-                          <Settings size={13} />
-                        </button>
+                        {isManager ? (
+                          <select
+                            className="planner-select"
+                            value={activeShiftId}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              handleMemberShiftChange(currentUserId, val);
+                            }}
+                            style={{ padding: '4px 8px', fontSize: '12px', minWidth: '130px' }}
+                          >
+                            <option value="">-- Chưa chọn --</option>
+                            {shifts.map(s => (
+                              <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="badge" style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '11.5px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-primary)', fontWeight: '600', border: '1px solid var(--border-glass)' }}>
+                            {activeShift ? activeShift.name : 'Chưa xếp ca'}
+                          </span>
+                        )}
+                        
+                        {isManager && (
+                          <button
+                            className="btn btn-secondary"
+                            onClick={() => {
+                              setShowShiftModal(true);
+                              setShiftFormName('');
+                              setShiftFormStart('08:00');
+                              setShiftFormEnd('16:00');
+                            }}
+                            style={{ padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            title="Cấu hình ca làm việc"
+                          >
+                            <Settings size={13} />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
