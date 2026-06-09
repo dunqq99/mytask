@@ -219,6 +219,7 @@ export default function App() {
   const [username, setUsername] = useState(() => localStorage.getItem('zenboard_username') || '');
   const [role, setRole] = useState(() => localStorage.getItem('zenboard_role') || 'editor');
   const [plan, setPlan] = useState(() => localStorage.getItem('zenboard_plan') || 'free');
+  const [isTeammate, setIsTeammate] = useState(false);
   const [planFeatures, setPlanFeatures] = useState(() => {
     try {
       const saved = localStorage.getItem('zenboard_plan_features');
@@ -354,7 +355,6 @@ export default function App() {
 
   const [dashboardSubTab, setDashboardSubTab] = useState('tasks'); // 'tasks' or 'partners'
   const [adminSubTab, setAdminSubTab] = useState('members'); // 'members', 'roles', 'plans', 'data'
-  const [isTeammate, setIsTeammate] = useState(false);
   const [plannerBacklogFilter, setPlannerBacklogFilter] = useState('all'); // 'all', 'urgent', 'no-due', 'short'
   const [plannerScheduleView, setPlannerScheduleView] = useState('day'); // 'day', 'week', 'month'
   const [autoInsertBreaks, setAutoInsertBreaks] = useState(true);
