@@ -1841,20 +1841,43 @@ app.post('/api/board/sync', authenticateToken, async (req, res) => {
           ]);
         } else {
           // Chuyển giao công việc (gán việc cho người khác)
-          // Đổi user_id = c.userId (ID của người nhận việc), category_id = null, column_id = defaultColId
+          // Đổi user_id = c.userId (ID của người nhận việc), category_id = null (nếu là task thường), column_id = defaultColId (nếu là task thường)
+          const checkIsCardPartnerBackend = (cardItem) => {
+            if (!cardItem.categoryId) return false;
+            const cats = Array.isArray(categories) ? categories : [];
+            const partnerCat = cats.find(cat => !cat.parentId && cat.name && cat.name.includes('Đối tác'));
+            const partnerRootId = partnerCat ? partnerCat.id : 'cat-4';
+            if (cardItem.categoryId === partnerRootId) return true;
+            let currentId = cardItem.categoryId;
+            let limit = 10;
+            while (currentId && limit > 0) {
+              const cat = cats.find(catItem => catItem.id === currentId);
+              if (!cat) break;
+              if (cat.parentId === partnerRootId) return true;
+              currentId = cat.parentId;
+              limit--;
+            }
+            return false;
+          };
+
+          const isPartnerCard = checkIsCardPartnerBackend(c);
+          const targetCategory = isPartnerCard ? c.categoryId : null;
+          const targetColumn = isPartnerCard ? (targetColId || c.columnId) : defaultColId;
+
           await client.query(`
             UPDATE cards SET 
               title = $1, description = $2, tags = $3, start_date = $4, due_date = $5, 
-              estimated_duration = $6, category_id = null, checklist = $7, activities = $8, 
+              estimated_duration = $6, category_id = $20, checklist = $7, activities = $8, 
               image = $9, services = $10, is_archived = $11, completed_at = $12, 
               linked_partner_id = $13, assignee_id = $14, column_id = $15, user_id = $16,
               created_by = COALESCE(created_by, $19)
-            WHERE id = $17 AND (user_id = $18 OR assignee_id = $18)
+            WHERE id = $17 AND (user_id = $18 OR assignee_id = $18 OR $21 = true)
           `, [
             c.title, c.description || '', JSON.stringify(c.tags || []), c.startDate || '', c.dueDate || '',
             c.estimatedDuration || 0, JSON.stringify(c.checklist || []), JSON.stringify(c.activities || []),
             c.image || null, JSON.stringify(c.services || []), c.isArchived || false, c.completedAt || null,
-            c.linkedPartnerId || null, c.assigneeId || null, defaultColId, c.userId, c.id, userId, c.createdBy || userId
+            c.linkedPartnerId || null, c.assigneeId || null, targetColumn, c.userId, c.id, userId, c.createdBy || userId,
+            targetCategory, isPartnerCard
           ]);
         }
       }

@@ -316,9 +316,28 @@ export default function CardModal({
       activities: updatedActivities
     };
     
+    const checkIsCardPartner = (c) => {
+      if (!c.categoryId) return false;
+      const partnerCat = categories.find(cat => !cat.parentId && cat.name && cat.name.includes('Đối tác'));
+      const partnerRootId = partnerCat ? partnerCat.id : 'cat-4';
+      if (c.categoryId === partnerRootId) return true;
+      let currentId = c.categoryId;
+      let limit = 10;
+      while (currentId && limit > 0) {
+        const cat = categories.find(catItem => catItem.id === currentId);
+        if (!cat) break;
+        if (cat.parentId === partnerRootId) return true;
+        currentId = cat.parentId;
+        limit--;
+      }
+      return false;
+    };
+
     if (newAssigneeId && newAssigneeId !== card.userId) {
-      updatedCard.userId = newAssigneeId;
-      updatedCard.categoryId = null; // Chưa phân loại
+      if (!checkIsCardPartner(card)) {
+        updatedCard.userId = newAssigneeId;
+        updatedCard.categoryId = null; // Chưa phân loại
+      }
     }
     
     setAssigneeId(newAssigneeId || '');
