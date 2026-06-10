@@ -334,6 +334,8 @@ export default function App() {
 
   const isTeamMember = plan !== 'free' && workspaceMembers.some(m => m.id === userId && m.role !== 'MNG');
   const isManager = plan !== 'free' && !isTeamMember;
+  const managerMember = workspaceMembers.find(m => m.role === 'MNG');
+  const managerId = managerMember ? managerMember.id : null;
 
   useEffect(() => {
     if (!token) return;
@@ -1370,8 +1372,11 @@ export default function App() {
   // Filter Cards based on search query, tags, and category selection
   const getFilteredCards = () => {
     return cards.filter(card => {
-      // Chỉ hiển thị công việc thuộc sở hữu của người dùng hiện tại hoặc chưa gán cho ai
-      const belongsToCurrentUser = !card.userId || card.userId === userId;
+      // Chỉ hiển thị công việc thuộc sở hữu của người dùng hiện tại, chưa gán cho ai, hoặc là thẻ đối tác của nhóm (manager sở hữu)
+      const belongsToCurrentUser = 
+        !card.userId || 
+        card.userId === userId || 
+        (managerId && card.userId === managerId && checkIsCardPartner(card));
       if (!belongsToCurrentUser) return false;
 
       // 1. Search Query filter (title or description)

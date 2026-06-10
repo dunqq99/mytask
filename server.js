@@ -1285,6 +1285,254 @@ app.get('/api/board', authenticateToken, async (req, res) => {
     }
     const boardOwnerId = managerId || userId;
 
+    // Tự động khởi tạo dữ liệu mẫu nếu thiếu cột hoặc danh mục
+    const colCheck = await client.query('SELECT COUNT(*) FROM columns WHERE user_id = $1', [boardOwnerId]);
+    const catCheck = await client.query('SELECT COUNT(*) FROM categories WHERE user_id = $1', [boardOwnerId]);
+    if (parseInt(colCheck.rows[0].count, 10) < 4 || parseInt(catCheck.rows[0].count, 10) === 0) {
+      console.log(`[Database Seeder] Khởi tạo dữ liệu mẫu cho user_id = ${boardOwnerId}`);
+      try {
+        await client.query('BEGIN');
+
+        // 1. Categories
+        const initialCategories = [
+          { id: 'cat-1', name: 'Hướng dẫn sử dụng 📖', parentId: null },
+          { id: 'cat-1-1', name: 'Thao tác cơ bản 🛠️', parentId: 'cat-1' },
+          { id: 'cat-1-2', name: 'Tính năng nâng cao 🚀', parentId: 'cat-1' },
+          { id: 'cat-2', name: 'Quản lý công việc 📂', parentId: null },
+          { id: 'cat-3', name: 'Báo cáo & Thống kê 📊', parentId: null },
+          { id: 'cat-4', name: 'Đối tác 🤝', parentId: null }
+        ];
+        for (const cat of initialCategories) {
+          await client.query(`
+            INSERT INTO categories (id, name, parent_id, user_id)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (id, user_id) DO NOTHING
+          `, [cat.id, cat.name, cat.parentId, boardOwnerId]);
+        }
+
+        // 2. Columns (regular)
+        const initialColumns = [
+          { id: 'col-1', title: 'Cần thực hiện 📋', cardIds: ['card-1', 'card-4'], color: '#3b82f6' },
+          { id: 'col-2', title: 'Đang triển khai ⚡', cardIds: ['card-2'], color: '#f59e0b' },
+          { id: 'col-3', title: 'Kiểm duyệt (Review) 👀', cardIds: ['card-3'], color: '#8b5cf6' },
+          { id: 'col-4', title: 'Hoàn thành 🎉', cardIds: ['card-5'], color: '#10b981' }
+        ];
+        for (const col of initialColumns) {
+          await client.query(`
+            INSERT INTO columns (id, title, color, card_ids, is_partner, user_id)
+            VALUES ($1, $2, $3, $4, 0, $5)
+            ON CONFLICT (id, user_id) DO UPDATE SET
+              title = EXCLUDED.title,
+              color = EXCLUDED.color,
+              card_ids = EXCLUDED.card_ids
+          `, [col.id, col.title, col.color, JSON.stringify(col.cardIds), boardOwnerId]);
+        }
+
+        // 3. Partner Columns (is_partner = 1)
+        const initialPartnerColumns = [
+          { id: 'part-col-1', title: 'Đối tác Tiềm năng 🌟', cardIds: ['partner-card-1'], color: '#ec4899' },
+          { id: 'part-col-2', title: 'Đang liên hệ 📞', cardIds: [], color: '#a855f7' },
+          { id: 'part-col-3', title: 'Hợp tác chính thức 🤝', cardIds: ['partner-card-2'], color: '#3b82f6' },
+          { id: 'part-col-4', title: 'Tạm dừng / Lưu trữ 📁', cardIds: [], color: '#10b981' }
+        ];
+        for (const col of initialPartnerColumns) {
+          await client.query(`
+            INSERT INTO columns (id, title, color, card_ids, is_partner, user_id)
+            VALUES ($1, $2, $3, $4, 1, $5)
+            ON CONFLICT (id, user_id) DO UPDATE SET
+              title = EXCLUDED.title,
+              color = EXCLUDED.color,
+              card_ids = EXCLUDED.card_ids
+          `, [col.id, col.title, col.color, JSON.stringify(col.cardIds), boardOwnerId]);
+        }
+
+        // 4. Cards
+        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+        const today = new Date().toISOString().split('T')[0];
+        const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+        const fiveDaysAgo = new Date(Date.now() - 86400000 * 5).toISOString().split('T')[0];
+        const thirtyDaysLater = new Date(Date.now() + 86400000 * 30).toISOString().split('T')[0];
+        const twoDaysAgo = new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0];
+        const threeDaysLater = new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0];
+        const twoDaysLater = new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0];
+        const fourDaysLater = new Date(Date.now() + 86400000 * 4).toISOString().split('T')[0];
+        const fiveDaysLater = new Date(Date.now() + 86400000 * 5).toISOString().split('T')[0];
+        const fourDaysAgo = new Date(Date.now() - 86400000 * 4).toISOString().split('T')[0];
+
+        const initialCards = [
+          {
+            id: 'partner-card-1',
+            title: 'Đối tác mẫu: Công ty TNHH Giải pháp Công nghệ Vintech',
+            description: 'Đây là thẻ đối tác mẫu trên bảng quản lý Đối tác & Khách hàng. Bạn có thể sử dụng bảng này để theo dõi tiến trình liên hệ với các đối tác của mình.\\n\\n👉 Hãy chuyển sang tab "Bảng Đối tác" ở thanh menu trên cùng để bắt đầu quản lý phễu đối tác của bạn.',
+            tags: ['potential'],
+            start_date: '',
+            due_date: '',
+            estimated_duration: 60,
+            checklist: [
+              { id: 'p-ch-1', text: 'Tìm hiểu thông tin & nhu cầu của đối tác', completed: true },
+              { id: 'p-ch-2', text: 'Gửi email giới thiệu giải pháp dịch vụ', completed: false }
+            ],
+            category_id: 'cat-4',
+            activities: [
+              { id: 'act-p-1', timestamp: '10:00:00 01/06', text: 'Tạo thẻ đối tác mẫu' }
+            ],
+            column_id: 'part-col-1'
+          },
+          {
+            id: 'partner-card-2',
+            title: 'Đối tác mẫu: Đại lý Truyền thông MediaMax',
+            description: 'Một đối tác mẫu đại diện cho trạng thái "Hợp tác chính thức". Tại đây bạn có thể đính kèm thông tin liên lạc chi tiết, ghi chú các mốc thời gian làm việc hoặc các công việc cụ thể cần triển khai chung.',
+            tags: ['strategic'],
+            start_date: fiveDaysAgo,
+            due_date: thirtyDaysLater,
+            estimated_duration: 120,
+            checklist: [
+              { id: 'p-ch-3', text: 'Ký kết hợp đồng khung thời hạn 1 năm', completed: true },
+              { id: 'p-ch-4', text: 'Họp kick-off dự án truyền thông quý 3', completed: true }
+            ],
+            category_id: 'cat-4',
+            activities: [
+              { id: 'act-p-2', timestamp: '14:30:00 01/06', text: 'Ký kết hợp đồng thành công' }
+            ],
+            column_id: 'part-col-3'
+          },
+          {
+            id: 'card-1',
+            title: 'Hướng dẫn 1: Thao tác kéo thả & Quản lý Kanban',
+            description: 'Chào mừng bạn đến với ZenBoard! Bảng Kanban giúp bạn quản lý trạng thái công việc trực quan hơn.\\n\\n👉 Hãy thử bấm giữ thẻ này và kéo thả qua các cột "Đang triển khai ⚡", "Kiểm duyệt (Review) 👀" để thay đổi trạng thái.\\n👉 Click vào thẻ này để mở màn hình chi tiết: tại đây bạn có thể sửa nội dung, gán nhãn dán, thêm công việc con (checklist) hoặc theo dõi lịch sử hoạt động.',
+            tags: ['low', 'design'],
+            start_date: twoDaysAgo,
+            due_date: threeDaysLater,
+            estimated_duration: 180,
+            checklist: [
+              { id: 'ch-1', text: 'Bấm vào thẻ này để xem chi tiết thông tin', completed: true },
+              { id: 'ch-2', text: 'Thử kéo thả thẻ này sang cột "Đang triển khai"', completed: false },
+              { id: 'ch-3', text: 'Thêm một nhãn dán mới phù hợp (ví dụ: Quan trọng)', completed: false }
+            ],
+            category_id: 'cat-1-1',
+            activities: [
+              { id: 'act-demo-1', timestamp: '08:30:00 03/06', text: 'Hệ thống tự động tạo thẻ hướng dẫn kéo thả' }
+            ],
+            column_id: 'col-1'
+          },
+          {
+            id: 'card-2',
+            title: 'Hướng dẫn 2: Lập kế hoạch tuần & Tự động sắp xếp công việc',
+            description: 'ZenBoard tích hợp tính năng lập lịch ca làm việc cực kỳ thông minh.\\n\\n👉 Hãy chuyển sang tab "Lập kế hoạch" ở thanh điều hướng trên cùng để xem:\\n1. Tính năng "Thiết lập ca làm việc" giúp cấu hình thời gian làm việc (ví dụ: ca sáng, ca tối, đổi ca linh hoạt theo ngày/tuần).\\n2. Bạn có thể kéo thả thẻ vào bảng lịch trình tuần/ngày để phân bổ.\\n3. Bấm "Sắp xếp thông minh" để hệ thống tự động tính toán thời gian, phân bổ công việc theo ca làm việc đã đăng ký của bạn từ thời điểm hiện tại trở đi.',
+            tags: ['feature'],
+            start_date: today,
+            due_date: twoDaysLater,
+            estimated_duration: 120,
+            checklist: [
+              { id: 'ch-4', text: 'Chuyển sang màn hình Lập kế hoạch ở thanh điều hướng trên', completed: true },
+              { id: 'ch-5', text: 'Tạo hoặc điều chỉnh ca làm việc trong tuần', completed: false },
+              { id: 'ch-6', text: 'Trải nghiệm nút Sắp xếp thông minh để tối ưu lịch trình', completed: false }
+            ],
+            category_id: 'cat-1-2',
+            activities: [
+              { id: 'act-demo-2', timestamp: '09:00:00 03/06', text: 'Tạo thẻ hướng dẫn Lập kế hoạch' }
+            ],
+            column_id: 'col-2'
+          },
+          {
+            id: 'card-3',
+            title: 'Hướng dẫn 3: Điều kiện hoàn thành công việc & Tự động khóa thẻ',
+            description: 'Để duy trì chất lượng dự án, hệ thống áp đặt các điều kiện khắt khe để đưa thẻ vào cột "Hoàn thành 🎉":\\n1. Công việc con (Checklist) phải hoàn thành 100%.\\n2. Phải có đầy đủ thông tin: Ngày bắt đầu và Ngày kết thúc (Hạn chót).\\n\\n🔒 QUAN TRỌNG: Khi thẻ đã nằm trong cột "Hoàn thành 🎉", hệ thống sẽ khóa toàn bộ các thao tác chỉnh sửa. Nếu muốn chỉnh sửa hoặc kéo thẻ ra cột khác, bạn cần xác nhận lý do khôi phục thẻ.',
+            tags: ['high', 'bug'],
+            start_date: yesterday,
+            due_date: fourDaysLater,
+            estimated_duration: 45,
+            checklist: [
+              { id: 'ch-7', text: 'Đánh dấu hoàn thành toàn bộ công việc con (Checklist)', completed: true },
+              { id: 'ch-8', text: 'Kiểm tra xem thẻ đã có Ngày bắt đầu và Hạn chót chưa', completed: true },
+              { id: 'ch-9', text: 'Kéo thẻ này vào cột "Hoàn thành 🎉" để kích hoạt chế độ Khóa thẻ', completed: false }
+            ],
+            category_id: 'cat-1-2',
+            activities: [
+              { id: 'act-demo-3', timestamp: '09:15:00 03/06', text: 'Tạo thẻ hướng dẫn Quy tắc hoàn thành' }
+            ],
+            column_id: 'col-3'
+          },
+          {
+            id: 'card-4',
+            title: 'Hướng dẫn 4: Tạo thẻ công việc mới & Lọc danh mục',
+            description: 'Bạn có thể dễ dàng khởi tạo các thẻ công việc mới bằng cách bấm vào nút "+ Thêm công việc" ở phía dưới mỗi cột Kanban.\\n\\nỞ thanh bên trái (Sidebar), hệ thống hiển thị Danh mục công việc (như Hướng dẫn sử dụng, Quản lý dự án...). Khi nhấp chọn một danh mục cụ thể, bảng Kanban sẽ lập tức lọc và chỉ hiển thị các công việc thuộc nhóm đó.',
+            tags: ['low'],
+            start_date: '',
+            due_date: fiveDaysLater,
+            estimated_duration: 90,
+            checklist: [
+              { id: 'ch-10', text: 'Bấm thử vào danh mục "Quản lý dự án" trên thanh Sidebar để lọc', completed: false },
+              { id: 'ch-11', text: 'Bấm "+ Thêm công việc" ở cột 1 để tạo thẻ mới thử nghiệm', completed: false }
+            ],
+            category_id: 'cat-2',
+            activities: [],
+            column_id: 'col-1'
+          },
+          {
+            id: 'card-5',
+            title: 'Hướng dẫn 5: Báo cáo Thống kê & Chu kỳ dọn dẹp bảng Kanban',
+            description: 'Thẻ công việc này đã được hoàn thành xuất sắc trước hạn chót (Deadline) và được khóa thành công.\\n\\n👉 Hãy nhấp vào tab "Báo cáo Thống kê" ở thanh menu trên cùng để xem các biểu đồ phân tích năng suất.\\n💡 Logic dọn dẹp thông minh: Sang ngày mới, hệ thống tự động làm sạch các thẻ đã hoàn thành ở cột "Hoàn thành 🎉" để giữ bảng Kanban luôn thông thoáng. Đừng lo lắng! Tất cả các công việc đã hoàn thành vẫn được lưu trữ đầy đủ để phục vụ báo cáo tuần/tháng hoặc hiển thị trên tab Đã hoàn thành của Planner.',
+            tags: ['medium', 'feature'],
+            start_date: fourDaysAgo,
+            due_date: tomorrow,
+            completed_at: new Date().toISOString(),
+            estimated_duration: 150,
+            checklist: [
+              { id: 'ch-12', text: 'Đọc hướng dẫn về logic chu kỳ dọn dẹp ngày/tuần/tháng', completed: true },
+              { id: 'ch-13', text: 'Xem biểu đồ thống kê hiệu quả tại tab Báo cáo Thống kê', completed: true }
+            ],
+            category_id: 'cat-1-1',
+            activities: [
+              { id: 'act-demo-4', timestamp: '08:00:00 03/06', text: 'Khởi tạo công việc hướng dẫn hoàn thành' },
+              { id: 'act-demo-5', timestamp: '11:00:00 03/06', text: 'Đạt điều kiện hoàn thành, chuyển thẻ sang cột Hoàn thành và tự động khóa' }
+            ],
+            column_id: 'col-4'
+          }
+        ];
+        for (const c of initialCards) {
+          await client.query(`
+            INSERT INTO cards 
+              (id, title, description, tags, start_date, due_date, estimated_duration, category_id, checklist, activities, user_id, is_archived, completed_at, assignee_id, column_id, created_by)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, false, $12, null, $13, $14)
+            ON CONFLICT (id, user_id) DO NOTHING
+          `, [
+            c.id, c.title, c.description, JSON.stringify(c.tags), c.start_date, c.due_date, c.estimated_duration, c.category_id,
+            JSON.stringify(c.checklist), JSON.stringify(c.activities), boardOwnerId, c.completed_at || null, c.column_id, boardOwnerId
+          ]);
+        }
+
+        // 5. Settings
+        const defaultSettings = {
+          todaySchedule: [],
+          workdayDuration: 480,
+          googleSheetUrl: '',
+          googleSheetDisplayUrl: '',
+          isAutoSyncEnabled: false,
+          lastSyncTime: '',
+          shifts: [
+            { id: 'shift-1', name: 'Ca 1', startTime: '07:00', endTime: '15:00' },
+            { id: 'shift-2', name: 'Ca 2', startTime: '15:00', endTime: '23:00' },
+            { id: 'shift-3', name: 'Ca 3', startTime: '23:00', endTime: '07:00' }
+          ],
+          weeklyShifts: {}
+        };
+        for (const [key, val] of Object.entries(defaultSettings)) {
+          await client.query(`
+            INSERT INTO settings (key, value, user_id)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (key, user_id) DO NOTHING
+          `, [key, JSON.stringify(val), boardOwnerId]);
+        }
+
+        await client.query('COMMIT');
+        console.log(`[Database Seeder] Seeded default layout and cards for owner ${boardOwnerId} successfully.`);
+      } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('[Database Seeder] Failed to seed default layout:', err.message);
+      }
+    }
+
     // 1. Tải Categories (của Manager nếu là thành viên)
     const catRes = await client.query('SELECT id, name, parent_id AS "parentId" FROM categories WHERE user_id = $1', [boardOwnerId]);
     data.categories = catRes.rows;
@@ -1327,7 +1575,8 @@ app.get('/api/board', authenticateToken, async (req, res) => {
         FROM cards 
         WHERE user_id = $1 
            OR assignee_id = $1
-      `, [userId]);
+           OR (user_id = $2 AND column_id IN (SELECT id FROM columns WHERE user_id = $2 AND is_partner = 1))
+      `, [userId, managerId]);
     }
     data.cards = cardRes.rows.map(c => ({
       id: c.id,
