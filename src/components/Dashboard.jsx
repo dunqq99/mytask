@@ -89,13 +89,13 @@ export default function Dashboard({
     const DEFAULT_PLAN_FEATURES = {
       free: { googleSheetsSync: false, activityLogs: false, checklists: true, cardLimit: 10, columnCustomization: true },
       pro: { googleSheetsSync: false, activityLogs: true, checklists: true, cardLimit: 100, columnCustomization: true },
-      enterprise: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 500, columnCustomization: true },
+      business: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 1000, columnCustomization: true },
       vip: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 9999, columnCustomization: true }
     };
     if (planFeatures && planFeatures[userPlan]) {
       return !!planFeatures[userPlan].googleSheetsSync;
     }
-    return userPlan === 'vip' || userPlan === 'enterprise';
+    return userPlan === 'vip' || userPlan === 'business';
   }, [planFeatures, userPlan]);
 
   // 1. Differentiate cards
@@ -668,7 +668,7 @@ export default function Dashboard({
                           <tr key={card.id}>
                             <td className="task-cell-title">{card.title}</td>
                             <td>{getUserUsername(card.createdBy)}</td>
-                            <td>{getUserUsername(card.userId)}</td>
+                            <td>{getUserUsername(card.assigneeId || card.userId)}</td>
                             <td>
                               {card.isArchived ? (
                                 <span 

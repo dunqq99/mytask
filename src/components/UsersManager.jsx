@@ -22,8 +22,7 @@ import {
 const PLAN_PRESETS = [
   { key: 'free', label: 'Free (Miễn phí)', color: '#71717a', bg: 'rgba(113, 113, 122, 0.15)' },
   { key: 'pro', label: 'Pro (Chuyên nghiệp)', color: '#a855f7', bg: 'rgba(168, 85, 247, 0.15)' },
-  { key: 'business', label: 'Business (Đội nhóm)', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
-  { key: 'enterprise', label: 'Enterprise (Doanh nghiệp)', color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.15)' },
+  { key: 'business', label: 'Enterprise (Doanh nghiệp)', color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.15)' },
   { key: 'vip', label: 'VIP (Đặc quyền)', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' }
 ];
 
@@ -49,7 +48,7 @@ export default function UsersManager({
   const [localFeatures, setLocalFeatures] = useState({
     free: { googleSheetsSync: false, activityLogs: false, checklists: true, cardLimit: 10, columnCustomization: true },
     pro: { googleSheetsSync: false, activityLogs: true, checklists: true, cardLimit: 100, columnCustomization: true },
-    enterprise: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 500, columnCustomization: true },
+    business: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 1000, columnCustomization: true },
     vip: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 9999, columnCustomization: true }
   });
 

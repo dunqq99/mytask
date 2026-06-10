@@ -217,7 +217,7 @@ const ensureCompletedColumnAtEnd = (cols, completedId) => {
 const DEFAULT_PLAN_FEATURES = {
   free: { googleSheetsSync: false, activityLogs: false, checklists: true, cardLimit: 10, columnCustomization: true },
   pro: { googleSheetsSync: false, activityLogs: true, checklists: true, cardLimit: 100, columnCustomization: true },
-  enterprise: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 500, columnCustomization: true },
+  business: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 1000, columnCustomization: true },
   vip: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 9999, columnCustomization: true }
 };
 
@@ -2049,7 +2049,7 @@ export default function App() {
             </div>
             
             <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 20px 0' }}>
-              Gói hiện tại của bạn: <strong style={{ color: 'var(--primary)', textTransform: 'uppercase' }}>{plan}</strong>. Chọn gói phù hợp bên dưới để mở khóa giới hạn và các tính năng premium:
+              Gói hiện tại của bạn: <strong style={{ color: 'var(--primary)', textTransform: 'uppercase' }}>{plan === 'business' ? 'enterprise' : plan}</strong>. Chọn gói phù hợp bên dưới để mở khóa giới hạn và các tính năng premium:
             </p>
             
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
@@ -2073,13 +2073,13 @@ export default function App() {
                   features: getPlanFeaturesList('pro')
                 },
                 { 
-                  key: 'enterprise', 
+                  key: 'business', 
                   name: 'ENTERPRISE', 
                   price: '499k / tháng',
                   color: '#3b82f6', 
                   bg: 'rgba(59, 130, 246, 0.1)', 
                   border: '1px solid rgba(59, 130, 246, 0.3)',
-                  features: getPlanFeaturesList('enterprise')
+                  features: getPlanFeaturesList('business')
                 },
                 { 
                   key: 'vip', 

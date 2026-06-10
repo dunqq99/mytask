@@ -794,12 +794,12 @@ export default function Sidebar({
                   padding: '1px 4px', 
                   borderRadius: '3px', 
                   fontSize: '9px', 
-                  background: plan === 'vip' ? 'rgba(245, 158, 11, 0.15)' : plan === 'enterprise' ? 'rgba(59, 130, 246, 0.15)' : plan === 'pro' ? 'rgba(168, 85, 247, 0.15)' : 'rgba(113, 113, 122, 0.15)', 
-                  color: plan === 'vip' ? '#f59e0b' : plan === 'enterprise' ? '#3b82f6' : plan === 'pro' ? '#a855f7' : '#71717a',
+                  background: plan === 'vip' ? 'rgba(245, 158, 11, 0.15)' : (plan === 'business' || plan === 'enterprise') ? 'rgba(59, 130, 246, 0.15)' : plan === 'pro' ? 'rgba(168, 85, 247, 0.15)' : 'rgba(113, 113, 122, 0.15)', 
+                  color: plan === 'vip' ? '#f59e0b' : (plan === 'business' || plan === 'enterprise') ? '#3b82f6' : plan === 'pro' ? '#a855f7' : '#71717a',
                   fontWeight: 'bold',
                   textTransform: 'uppercase'
                 }}>
-                  {plan ? plan.toUpperCase() : 'FREE'}
+                  {plan ? (plan === 'business' ? 'ENTERPRISE' : plan.toUpperCase()) : 'FREE'}
                 </span>
                 <button 
                   onClick={onUpgradeClick}

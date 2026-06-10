@@ -187,6 +187,44 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
       await client.query(`UPDATE cards SET created_by = user_id WHERE created_by IS NULL`);
 
 
+      // Fix incorrect created_by for delegated/assigned cards by reading their activity log
+      try {
+        const wrongCards = await client.query(`
+          SELECT c.id, c.user_id, c.activities, tm.owner_id AS manager_id, u.username AS manager_username
+          FROM cards c
+          JOIN team_members tm ON c.user_id = tm.member_id
+          JOIN users u ON tm.owner_id = u.id
+          WHERE c.created_by = c.user_id AND tm.status = 'active'
+        `);
+        for (const row of wrongCards.rows) {
+          let activities = [];
+          try {
+            activities = typeof row.activities === 'string' ? JSON.parse(row.activities) : (row.activities || []);
+          } catch (e) {
+            activities = [];
+          }
+          if (Array.isArray(activities)) {
+            // Check if any activity text indicates assignment by the manager
+            const assignedByManager = activities.some(act => 
+              act.text && (
+                act.text.includes(`bởi ${row.manager_username}`) || 
+                act.text.includes(`giao bởi ${row.manager_username}`) ||
+                act.text.includes(`bởi hệ thống`) ||
+                act.text.includes(`phân công công việc`)
+              )
+            );
+            if (assignedByManager) {
+              console.log(`[Database Migration] Sửa created_by của thẻ ${row.id} từ ${row.user_id} sang manager ${row.manager_id}`);
+              await client.query('UPDATE cards SET created_by = $1 WHERE id = $2 AND user_id = $3', [row.manager_id, row.id, row.user_id]);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[Database Migration Warning] Không thể sửa created_by từ activities:', err.message);
+      }
+
+
+
       // Bảng thành viên nhóm (Team Members)
       await client.query(`CREATE TABLE IF NOT EXISTS team_members (
         owner_id VARCHAR(50) NOT NULL,
@@ -296,15 +334,14 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
           const defaultFeatures = {
             free: { googleSheetsSync: false, activityLogs: false, checklists: true, cardLimit: 10, columnCustomization: true },
             pro: { googleSheetsSync: false, activityLogs: true, checklists: true, cardLimit: 100, columnCustomization: true },
-            business: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 500, columnCustomization: true },
-            enterprise: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 500, columnCustomization: true },
+            business: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 1000, columnCustomization: true },
             vip: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 9999, columnCustomization: true }
           };
           await client.query("INSERT INTO settings (key, value, user_id) VALUES ('plan_features', $1, 'system')", [
             JSON.stringify(defaultFeatures)
           ]);
         } else {
-          // Migration: Đảm bảo gói free có columnCustomization = true và gói business tồn tại trong DB
+          // Migration: Đảm bảo gói free có columnCustomization = true và gói business tồn tại trong DB, gộp enterprise vào business
           try {
             const currentFeatures = JSON.parse(featRes.rows[0].value);
             let updated = false;
@@ -312,8 +349,12 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
               currentFeatures.free.columnCustomization = true;
               updated = true;
             }
-            if (!currentFeatures.business) {
-              currentFeatures.business = { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 500, columnCustomization: true };
+            if (currentFeatures.enterprise) {
+              delete currentFeatures.enterprise;
+              updated = true;
+            }
+            if (!currentFeatures.business || currentFeatures.business.cardLimit !== 1000) {
+              currentFeatures.business = { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 1000, columnCustomization: true };
               updated = true;
             }
             if (updated) {
@@ -326,6 +367,10 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
             console.error('[Migration Error] Lỗi cập nhật cấu hình plan_features:', migrateErr.message);
           }
         }
+
+        // Cập nhật tất cả các tài khoản 'enterprise' hiện có sang 'business'
+        await client.query("UPDATE users SET plan = 'business' WHERE plan = 'enterprise'");
+
       } catch (initErr) {
         console.error('[Database Init Error] Không thể tự động tạo tài khoản mặc định:', initErr.message);
         try { await client.query('ROLLBACK'); } catch (e) {}
@@ -333,11 +378,11 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
       // Tự động tạo các tài khoản doanh nghiệp mẫu nếu chưa tồn tại
       try {
         const sampleUsers = [
-          { id: 'usr-mng1', username: 'mng1', role: 'editor', plan: 'enterprise' },
-          { id: 'usr-mkt1', username: 'mkt1', role: 'editor', plan: 'enterprise' },
-          { id: 'usr-vh1', username: 'vh1', role: 'editor', plan: 'enterprise' },
-          { id: 'usr-vh2', username: 'vh2', role: 'editor', plan: 'enterprise' },
-          { id: 'usr-vh3', username: 'vh3', role: 'editor', plan: 'enterprise' }
+          { id: 'usr-mng1', username: 'mng1', role: 'editor', plan: 'business' },
+          { id: 'usr-mkt1', username: 'mkt1', role: 'editor', plan: 'business' },
+          { id: 'usr-vh1', username: 'vh1', role: 'editor', plan: 'business' },
+          { id: 'usr-vh2', username: 'vh2', role: 'editor', plan: 'business' },
+          { id: 'usr-vh3', username: 'vh3', role: 'editor', plan: 'business' }
         ];
 
         for (const u of sampleUsers) {
@@ -350,7 +395,7 @@ async function ensureDatabaseAndTables(retries = 10, delayMs = 3000) {
               [u.id, u.username, pwdHash, u.role, u.plan]
             );
           } else {
-            // Đảm bảo gói dịch vụ và role hệ thống của các user này luôn là enterprise / editor
+            // Đảm bảo gói dịch vụ và role hệ thống của các user này luôn là business / editor
             await client.query('UPDATE users SET role = $1, plan = $2 WHERE username = $3', [u.role, u.plan, u.username]);
           }
         }
@@ -650,7 +695,7 @@ app.post('/api/auth/login', async (req, res) => {
 // API Nâng cấp gói dịch vụ (Tự phục vụ / Trải nghiệm)
 app.post('/api/user/upgrade-plan', authenticateToken, async (req, res) => {
   const { plan } = req.body;
-  const validPlans = ['free', 'pro', 'business', 'enterprise', 'vip'];
+  const validPlans = ['free', 'pro', 'business', 'vip'];
   if (!plan || !validPlans.includes(plan)) {
     return res.status(400).json({ error: 'Gói đăng ký không hợp lệ.' });
   }
@@ -804,7 +849,7 @@ app.post('/api/admin/users/update', authenticateToken, async (req, res) => {
     }
 
     if (plan) {
-      const validPlans = ['free', 'pro', 'business', 'enterprise', 'vip'];
+      const validPlans = ['free', 'pro', 'business', 'vip'];
       if (!validPlans.includes(plan)) {
         client.release();
         return res.status(400).json({ error: 'Gói đăng ký không hợp lệ.' });
@@ -1362,8 +1407,7 @@ app.get('/api/board', authenticateToken, async (req, res) => {
       data.planFeatures = {
         free: { googleSheetsSync: false, activityLogs: false, checklists: true, cardLimit: 10, columnCustomization: true },
         pro: { googleSheetsSync: false, activityLogs: true, checklists: true, cardLimit: 100, columnCustomization: true },
-        business: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 500, columnCustomization: true },
-        enterprise: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 500, columnCustomization: true },
+        business: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 1000, columnCustomization: true },
         vip: { googleSheetsSync: true, activityLogs: true, checklists: true, cardLimit: 9999, columnCustomization: true }
       };
     }
@@ -1539,7 +1583,7 @@ app.post('/api/board/sync', authenticateToken, async (req, res) => {
               linked_partner_id = EXCLUDED.linked_partner_id,
               assignee_id = EXCLUDED.assignee_id,
               column_id = EXCLUDED.column_id,
-              created_by = EXCLUDED.created_by
+              created_by = COALESCE(cards.created_by, EXCLUDED.created_by)
           `, [
             c.id, c.title, c.description || '', JSON.stringify(c.tags || []), c.startDate || '', c.dueDate || '',
             c.estimatedDuration || 0, c.categoryId || null, JSON.stringify(c.checklist || []), JSON.stringify(c.activities || []),
@@ -1555,7 +1599,7 @@ app.post('/api/board/sync', authenticateToken, async (req, res) => {
               estimated_duration = $6, category_id = null, checklist = $7, activities = $8, 
               image = $9, services = $10, is_archived = $11, completed_at = $12, 
               linked_partner_id = $13, assignee_id = $14, column_id = $15, user_id = $16,
-              created_by = $19
+              created_by = COALESCE(created_by, $19)
             WHERE id = $17 AND (user_id = $18 OR assignee_id = $18)
           `, [
             c.title, c.description || '', JSON.stringify(c.tags || []), c.startDate || '', c.dueDate || '',
